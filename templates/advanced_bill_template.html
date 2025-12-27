@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transaction Bill - {{txHash}}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: #fff;
+            color: #0f172a;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        .page-container {
+            width: 210mm;
+            min-height: 297mm;
+            position: relative;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Utility Classes */
+        .px-10 {
+            padding-left: 10mm;
+            padding-right: 10mm;
+        }
+
+        .py-8 {
+            padding-top: 8mm;
+            padding-bottom: 8mm;
+        }
+
+        .flex {
+            display: flex;
+        }
+
+        .justify-between {
+            justify-content: space-between;
+        }
+
+        .items-center {
+            align-items: center;
+        }
+
+        .flex-col {
+            flex-direction: column;
+        }
+
+        .gap-2 {
+            gap: 0.5rem;
+        }
+
+        .gap-4 {
+            gap: 1rem;
+        }
+
+        .text-right {
+            text-align: right;
+        }
+
+        .font-bold {
+            font-weight: 700;
+        }
+
+        .text-sm {
+            font-size: 0.875rem;
+        }
+
+        /* 14px */
+        .text-xs {
+            font-size: 0.75rem;
+        }
+
+        /* 12px */
+        .text-xxs {
+            font-size: 0.65rem;
+        }
+
+        .text-gray-500 {
+            color: #64748b;
+        }
+
+        .text-gray-400 {
+            color: #94a3b8;
+        }
+
+        .uppercase {
+            text-transform: uppercase;
+        }
+
+        .tracking-wide {
+            letter-spacing: 0.05em;
+        }
+
+        .rounded {
+            border-radius: 0.375rem;
+        }
+
+        .border-b {
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        /* Branding */
+        .header {
+            background: #f8fafc;
+            border-bottom: 2px solid #0f172a;
+        }
+
+        .brand-logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: #0f172a;
+            letter-spacing: -0.025em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .brand-icon {
+            width: 32px;
+            height: 32px;
+            background: #0f172a;
+            color: white;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        /* Dynamic Status Badges */
+        .badge {
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .badge-success {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .badge-pending {
+            background: #fff7ed;
+            color: #9a3412;
+        }
+
+        .badge-type {
+            background: #f1f5f9;
+            color: #334155;
+            border: 1px solid #e2e8f0;
+        }
+
+        /* Grid Layouts */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+        }
+
+        /* Info Cards */
+        .info-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1rem;
+        }
+
+        .info-label {
+            font-size: 0.7rem;
+            color: #64748b;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .info-value {
+            font-size: 0.9rem;
+            font-weight: 500;
+            word-break: break-all;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .info-value-lg {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        th {
+            text-align: left;
+            font-size: 0.75rem;
+            color: #64748b;
+            font-weight: 600;
+            padding: 0.75rem 0;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        td {
+            padding: 1rem 0;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 0.875rem;
+            vertical-align: top;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        .amount-positive {
+            color: #16a34a;
+            font-weight: 600;
+        }
+
+        .amount-negative {
+            color: #dc2626;
+            font-weight: 600;
+        }
+
+        .token-icon {
+            width: 20px;
+            height: 20px;
+            vertical-align: middle;
+            margin-right: 6px;
+            border-radius: 50%;
+            background: #f1f5f9;
+        }
+
+        /* Sections */
+        .section-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .section-line {
+            height: 1px;
+            background: #e2e8f0;
+            flex-grow: 1;
+        }
+
+        /* Summary Box */
+        .summary-box {
+            background: #0f172a;
+            color: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-top: 2rem;
+        }
+
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+        }
+
+        .summary-row:last-child {
+            margin-bottom: 0;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .summary-label {
+            opacity: 0.7;
+            font-size: 0.875rem;
+        }
+
+        .summary-val {
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+
+        .summary-total {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+
+        /* NFT Card */
+        .nft-preview {
+            width: 60px;
+            height: 60px;
+            border-radius: 6px;
+            object-fit: cover;
+            border: 1px solid #e2e8f0;
+        }
+
+        /* QR & footer */
+        .footer {
+            margin-top: auto;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 1rem;
+            font-size: 0.75rem;
+            color: #94a3b8;
+        }
+
+        .watermark {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-45deg);
+            font-size: 8rem;
+            color: rgba(15, 23, 42, 0.03);
+            font-weight: 900;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .ad-space {
+            margin-top: 2rem;
+            border: 1px dashed #cbd5e1;
+            background: #f8fafc;
+            padding: 1rem;
+            text-align: center;
+            border-radius: 8px;
+        }
+    </style>
+    <!-- Font for Monospaced Address -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;600;700;800&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <div class="page-container">
+        <div class="watermark">OFFICIAL BILL</div>
+
+        <!-- Header -->
+        <header class="px-10 py-8 header flex justify-between items-center">
+            <div class="brand-logo">
+                <div class="brand-icon">⚡</div>
+                GCHAIN RECEIPT
+            </div>
+            <div class="text-right">
+                <div class="text-xs text-gray-500 uppercase tracking-wide">Receipt #</div>
+                <div class="font-bold text-sm">{{billId}}</div>
+                <div class="flex gap-2 justify-end mt-2">
+                    <span class="badge badge-type">{{chainName}}</span>
+                    <span class="badge badge-success">{{status}}</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="px-10 py-8" style="flex-grow: 1;">
+
+            <!-- Quick Stats -->
+            <div class="grid-4 mb-8">
+                <div class="info-card">
+                    <div class="info-label">Date (UTC)</div>
+                    <div class="info-value">{{date}}</div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Transaction Type</div>
+                    <div class="info-value">{{type}}</div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Network Fee</div>
+                    <div class="info-value text-red-600">-${{feeUSD}}</div>
+                </div>
+                <!-- Dynamic Highlight Field -->
+                <div class="info-card" style="background: #f0f9ff; border-color: #bae6fd;">
+                    <div class="info-label text-blue-700">Total Value</div>
+                    <div class="info-value font-bold text-blue-900">${{totalValueUSD}}</div>
+                </div>
+            </div>
+
+            <!-- Transaction Details -->
+            <div class="section-title">
+                Transaction Details
+                <div class="section-line"></div>
+            </div>
+
+            <div class="info-card mb-8">
+                <div class="flex flex-col gap-4">
+                    <div>
+                        <div class="info-label">Transaction Hash</div>
+                        <div class="info-value text-sm">{{txHash}}</div>
+                    </div>
+                    <div class="grid-2">
+                        <div>
+                            <div class="info-label">From Address</div>
+                            <div class="info-value text-xs">{{from}}</div>
+                        </div>
+                        <div>
+                            <div class="info-label">Interacted With (To)</div>
+                            <div class="info-value text-xs">{{to}}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dynamic Content Based on Type -->
+
+            <!-- SWAP SECTION -->
+            {{#if isSwap}}
+            <div class="section-title">
+                Swap Execution
+                <div class="section-line"></div>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th width="10%">Action</th>
+                        <th width="40%">Token</th>
+                        <th width="25%" class="text-right">Amount</th>
+                        <th width="25%" class="text-right">Value (USD)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="text-gray-500 font-bold">SENT</td>
+                        <td>
+                            <div class="flex items-center">
+                                {{#if sentTokenLogo}}<img src="{{sentTokenLogo}}" class="token-icon">{{/if}}
+                                <div class="font-bold">{{sentTokenSymbol}}</div>
+                            </div>
+                            <div class="text-xxs text-gray-500">{{sentTokenName}}</div>
+                        </td>
+                        <td class="text-right font-bold">{{sentAmount}}</td>
+                        <td class="text-right text-gray-500">${{sentValueUSD}}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-gray-500 font-bold">RECEIVED</td>
+                        <td>
+                            <div class="flex items-center">
+                                {{#if receivedTokenLogo}}<img src="{{receivedTokenLogo}}" class="token-icon">{{/if}}
+                                <div class="font-bold">{{receivedTokenSymbol}}</div>
+                            </div>
+                            <div class="text-xxs text-gray-500">{{receivedTokenName}}</div>
+                        </td>
+                        <td class="text-right font-bold text-green-600">+{{receivedAmount}}</td>
+                        <td class="text-right font-bold">${{receivedValueUSD}}</td>
+                    </tr>
+                </tbody>
+            </table>
+            {{/if}}
+
+            <!-- NFT SECTION -->
+            {{#if isNFT}}
+            <div class="section-title">
+                NFT Assets
+                <div class="section-line"></div>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th width="10%">Preview</th>
+                        <th width="40%">Collection / Item</th>
+                        <th width="20%">Token ID</th>
+                        <th width="30%" class="text-right">Price</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{#each nftItems}}
+                    <tr>
+                        <td><img src="{{imageUrl}}" class="nft-preview"></td>
+                        <td>
+                            <div class="font-bold">{{collectionName}}</div>
+                            <div class="text-xs text-gray-500">{{itemName}}</div>
+                        </td>
+                        <td class="info-value">#{{tokenId}}</td>
+                        <td class="text-right font-bold">{{priceCrypto}} {{cryptoSymbol}} <span
+                                class="text-gray-400 font-normal">(${{priceUSD}})</span></td>
+                    </tr>
+                    {{/each}}
+                </tbody>
+            </table>
+            {{/if}}
+
+            <!-- FINANCIAL SUMMARY -->
+            <div class="summary-box">
+                <div class="summary-row">
+                    <span class="summary-label">Subtotal</span>
+                    <span class="summary-val">${{subtotalUSD}}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Network Fee (Gas) - {{gasUsed}} {{nativeSymbol}}</span>
+                    <span class="summary-val">-${{feeUSD}}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Total Cost to You</span>
+                    <span class="summary-total">${{totalCostUSD}}</span>
+                </div>
+            </div>
+
+            <!-- ADS & AUDIT -->
+            {{#if hasAd}}
+            <div class="ad-space">
+                {{{adContent}}}
+            </div>
+            {{/if}}
+
+        </main>
+
+        <footer class="px-10 py-8 footer">
+            <div class="flex justify-between items-end">
+                <div>
+                    <div class="font-bold text-gray-700 mb-1">Audit Trail</div>
+                    <div>Source: {{priceSource}}</div>
+                    <div>Block: {{blockNumber}} ({{confirmations}} confirmations)</div>
+                    <div>Generated: {{generatedAt}}</div>
+                </div>
+                <div class="text-right">
+                    <img src="{{qrCodeUrl}}" style="width: 60px; height: 60px; opacity: 0.8;">
+                    <div class="mt-1">Scan to Verify</div>
+                </div>
+            </div>
+        </footer>
+    </div>
+</body>
+
+</html>
