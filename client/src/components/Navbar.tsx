@@ -1,13 +1,24 @@
-'use client';
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { FileText } from 'lucide-react';
 import Link from 'next/link';
-import { RegistrationModal } from './RegistrationModal';
+import { useAccount } from 'wagmi';
+
+const ADMIN_ADDRESS = process.env.ADMIN_ADDRESS;
 
 export function Navbar() {
-    const [isRegisterOpen, setIsRegisterOpen] = useState(false);
+    const { address } = useAccount();
+    const [isAdmin, setIsAdmin] = useState(false);
+
+    useEffect(() => {
+
+
+        if (address && ADMIN_ADDRESS && address.toLowerCase() === ADMIN_ADDRESS.toLowerCase()) {
+            setIsAdmin(true);
+        } else {
+            setIsAdmin(false);
+        }
+    }, [address]);
 
     return (
         <>
@@ -23,17 +34,15 @@ export function Navbar() {
 
                         <div className="flex items-center gap-6">
                             <div className="hidden md:flex items-center gap-6 text-sm font-medium text-gray-300">
-                                <button onClick={() => setIsRegisterOpen(true)} className="hover:text-white transition-colors">Register</button>
-                                <Link href="/dashboard" className="hover:text-white transition-colors">Dashboard</Link>
-                                <Link href="/pricing" className="hover:text-white transition-colors">Pricing</Link>
-                                <Link href="/docs" className="hover:text-white transition-colors">Docs</Link>
+                                {isAdmin && (
+                                    <Link href="/dashboard" className="hover:text-white transition-colors">Dashboard</Link>
+                                )}
                             </div>
                             <ConnectButton showBalance={false} />
                         </div>
                     </div>
                 </div>
             </nav>
-            <RegistrationModal isOpen={isRegisterOpen} onClose={() => setIsRegisterOpen(false)} />
         </>
     );
 }

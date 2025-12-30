@@ -1,0 +1,14 @@
+[
+  {
+    "id": "Web only",
+    "contentHtml": "<div id=\"frame\" style=\"width: 100%;margin: auto;position: relative; z-index: 99998;\">\n          <iframe data-aa='2378647' src='//acceptable.a-ads.com/2378647/?size=Adaptive'\n                            style='border:0; padding:0; width:70%; height:auto; overflow:hidden;display: block;margin: auto'></iframe>\n        </div>",
+    "isActive": true,
+    "placement": "web"
+  },
+  {
+    "id": "Pdf Only",
+    "contentHtml": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Responsive Image Example</title>\n    <style>\n        /* This is the container style - just for demonstration */\n        .container {\n            width: 50%; /* You can change this width to test */\n            margin: 20px auto;\n            border: 2px solid #333;\n            padding: 10px;\n        }\n\n        /* This is the standard code for a responsive image */\n        .responsive-img {\n            width: 100%;      /* Stretches image to fill container width */\n            height: auto;     /* Maintains aspect ratio */\n            display: block;   /* Removes default bottom margin */\n        }\n    </style>\n</head>\n<body>\n\n    <div class=\"container\">\n        <h3>Responsive Image</h3>\n        <img src=\"https://images.pexels.com/photos/963486/pexels-photo-963486.jpeg\" alt=\"Wood texture\" class=\"responsive-img\">\n    </div>\n\n</body>\n</html>",
+    "isActive": true,
+    "placement": "pdf"
+  }
+]

@@ -342,6 +342,21 @@
             padding: 1rem;
             text-align: center;
             border-radius: 8px;
+            overflow: hidden;
+            /* Ensure content stays within bounds */
+        }
+
+        .ad-space iframe {
+            width: 100% !important;
+            min-height: 200px;
+            border: none;
+            display: block;
+        }
+
+        .ad-space img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
         }
     </style>
     <!-- Font for Monospaced Address -->
@@ -407,12 +422,22 @@
                     </div>
                     <div class="grid-2">
                         <div>
-                            <div class="info-label">From Address</div>
-                            <div class="info-value text-xs">{{from}}</div>
+                            <div class="info-label">From</div>
+                            {{#if fromEns}}
+                            <div class="info-value">{{fromEns}}</div>
+                            <div class="text-xxs text-gray-500 font-mono mt-1">{{fromAddress}}</div>
+                            {{else}}
+                            <div class="info-value text-xs font-mono break-all">{{fromAddress}}</div>
+                            {{/if}}
                         </div>
                         <div>
                             <div class="info-label">Interacted With (To)</div>
-                            <div class="info-value text-xs">{{to}}</div>
+                            {{#if toEns}}
+                            <div class="info-value">{{toEns}}</div>
+                            <div class="text-xxs text-gray-500 font-mono mt-1">{{toAddress}}</div>
+                            {{else}}
+                            <div class="info-value text-xs font-mono break-all">{{toAddress}}</div>
+                            {{/if}}
                         </div>
                     </div>
                 </div>
@@ -515,7 +540,9 @@
             <!-- ADS & AUDIT -->
             {{#if hasAd}}
             <div class="ad-space">
-                {{{adContent}}}
+                <a href="{{adLink}}" target="_blank" style="text-decoration: none; display: block; width: 100%;">
+                    {{{adContent}}}
+                </a>
             </div>
             {{/if}}
 

@@ -51,4 +51,17 @@ export class AuthService {
     generateNonce(): string {
         return `Sign this message to login to GChain Receipt Manager.\nNonce: ${Date.now()}-${Math.random().toString(36).substring(7)}`;
     }
+
+    /**
+     * Verify a JWT token.
+     * @param token The JWT token string.
+     * @returns The decoded payload if valid, throws error otherwise.
+     */
+    verifyToken(token: string): any {
+        try {
+            return jwt.verify(token, this.jwtSecret);
+        } catch (error) {
+            throw new Error('Invalid or expired token');
+        }
+    }
 }

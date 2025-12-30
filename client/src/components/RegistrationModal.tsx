@@ -1,23 +1,33 @@
-'use client';
-
-import { useState } from 'react';
-import { useWriteContract, useAccount } from 'wagmi';
+import { useEffect } from 'react';
+import { useWriteContract, useAccount, useWaitForTransactionReceipt } from 'wagmi';
 import { motion, AnimatePresence } from 'framer-motion';
-import RegistryManagerArtifact from '../abis/RegistryManager.json';
+import { REGISTRY_ABI, REGISTRY_ADDRESS } from '../abis/RegistryManager';
 
-const CONTRACT_ADDRESS = '0xea6d4f5a6d39767722b82a8f1028ae6022ce73f9'; // Example Address
-
-export function RegistrationModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-    const { writeContract, isPending, isSuccess, error } = useWriteContract();
+export function RegistrationModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; onClose: () => void; onSuccess?: () => void }) {
+    const { data: hash, writeContract, isPending: isWritePending, error: writeError } = useWriteContract();
     const { address } = useAccount();
+
+    const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+        hash,
+    });
+
+    useEffect(() => {
+        if (isConfirmed) {
+            // Wait a small moment for UX then close
+            const timer = setTimeout(() => {
+                if (onSuccess) onSuccess();
+            }, 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [isConfirmed, onSuccess]);
 
     const handleRegister = () => {
         writeContract({
-            address: CONTRACT_ADDRESS,
-            abi: RegistryManagerArtifact.abi,
+            address: REGISTRY_ADDRESS as `0x${string}`,
+            abi: REGISTRY_ABI,
             functionName: 'register',
             args: ['Accepted Terms V1'], // tcHash
-            value: 0n, // Registration might be free or have fee
+            value: BigInt(0),
         });
     };
 
@@ -55,9 +65,9 @@ export function RegistrationModal({ isOpen, onClose }: { isOpen: boolean; onClos
                             </div>
                         </div>
 
-                        {error && (
+                        {writeError && (
                             <div className="mb-4 text-xs text-red-400 bg-red-500/10 p-2 rounded">
-                                {(error as any).shortMessage || error.message}
+                                {(writeError as any).shortMessage || writeError.message}
                             </div>
                         )}
 
@@ -70,10 +80,10 @@ export function RegistrationModal({ isOpen, onClose }: { isOpen: boolean; onClos
                             </button>
                             <button
                                 onClick={handleRegister}
-                                disabled={isPending || isSuccess}
+                                disabled={isWritePending || isConfirming || isConfirmed}
                                 className="flex-1 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
                             >
-                                {isPending ? 'Signing...' : isSuccess ? 'Registered!' : 'Agree & Register'}
+                                {isWritePending ? 'Check Wallet...' : isConfirming ? 'Confirming...' : isConfirmed ? 'Registered!' : 'Agree & Register'}
                             </button>
                         </div>
                     </motion.div>
