@@ -18,3 +18,9 @@ export const ROUTER_SIGNATURES = [
     "0x38ed1739", // swapExactTokensForTokens
     "0x18cbafe5"  // swapExactTokensForETH
 ];
+
+export const ERC1155_ABI = [
+    "event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value)",
+    "event TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values)",
+    "function uri(uint256 id) view returns (string)"
+];

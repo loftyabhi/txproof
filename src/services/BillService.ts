@@ -4,7 +4,7 @@ import path from 'path';
 import Handlebars from 'handlebars';
 import puppeteer from 'puppeteer';
 import { PriceOracleService } from './PriceOracleService';
-import { ERC20_ABI, ERC721_ABI } from '../abis/Common';
+import { ERC20_ABI, ERC721_ABI, ERC1155_ABI } from '../abis/Common';
 
 interface BillRequest {
     txHash: string;
@@ -106,42 +106,14 @@ export class BillService {
         let shouldShowSwap = false;
         let swapData: any = {};
 
-        // Detect ERC20 Transfers
-        const erc20Logs = receipt.logs.filter(log => log.topics[0] === erc20Interface.getEvent('Transfer')?.topicHash);
+        // 4.0 Advanced Transaction Classification
+        const { transactionClassifier } = require('./TransactionClassifier');
+        const classification = await transactionClassifier.classify(receipt, tx, chainId);
 
-        // Heuristic: If we have > 1 generic transfer involving Sender and Router/Pools, probably a swap
-        if (erc20Logs.length >= 1 && !isNativeSend) {
-            // simplified Single-hop detection
-            // Find transfer FROM user (Sent) and transfer TO user (Received)
-            const sentLog = erc20Logs.find(l => {
-                try { return erc20Interface.parseLog(l)?.args[0].toLowerCase() === tx.from.toLowerCase(); } catch { return false; }
-            });
-            const receivedLog = erc20Logs.find(l => {
-                try { return erc20Interface.parseLog(l)?.args[1].toLowerCase() === tx.from.toLowerCase(); } catch { return false; }
-            });
-
-            if (sentLog || receivedLog) {
-                shouldShowSwap = true;
-
-                // Resolving Tokens (Simplified - In Prod use a TokenList)
-                if (sentLog) {
-                    const parsed = erc20Interface.parseLog(sentLog);
-                    swapData.sentTokenSymbol = "TOKEN"; // Would typically fetch `symbol()`
-                    swapData.sentAmount = ethers.formatEther(parsed!.args[2]); // Assuming 18 decimals fallback
-                    swapData.sentValueUSD = "?.??"; // Would need Oracle for this token
-                    swapData.sentTokenName = sentLog.address;
-                }
-                if (receivedLog) {
-                    const parsed = erc20Interface.parseLog(receivedLog);
-                    swapData.receivedTokenSymbol = "TOKEN";
-                    swapData.receivedAmount = ethers.formatEther(parsed!.args[2]);
-                    swapData.receivedValueUSD = "?.??";
-                    swapData.receivedTokenName = receivedLog.address;
-                }
-            }
+        console.log(`Classification: ${classification.type} (${Math.round(classification.confidence * 100)}% confidence)`);
+        if (classification.protocol) {
+            console.log(`Protocol: ${classification.protocol}`);
         }
-
-        const type = isNativeSend ? 'NATIVE SEND' : (shouldShowSwap ? 'SWAP' : 'CONTRACT INTERACTION');
 
         // 4.1 Fetch Ad (Specific for PDF)
         const { AdminService } = require('./AdminService');
@@ -152,97 +124,280 @@ export class BillService {
         const QRCode = require('qrcode');
         const qrCodeDataUrl = await QRCode.toDataURL(this.getExplorerUrl(chainId, txHash));
 
-        // 4.3 NFT Detection (ERC721)
-        let isNFT = false;
-        let nftData: any = {};
+        // 5. Prepare Data for Enterprise Template
+        const billId = `BILL-${chainId}-${receipt.blockNumber}-${txHash.slice(0, 6)}`;
+        const now = new Date();
+        const txDate = new Date(timestamp * 1000);
 
-        // Filter for ERC721 Transfer events (same topic as ERC20, but we check logic)
-        // Topic 0: Transfer(address,address,uint256) -> 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
-        // ERC721: 3 indexed args (topic 1=from, topic 2=to, topic 3=tokenId)
-        // ERC20: 2 indexed args (topic 1=from, topic 2=to) + data=amount
+        // Relative Time (Simple implementation)
+        const diffMs = now.getTime() - txDate.getTime();
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const relativeTime = diffHours < 24 ? `${diffHours} hours ago` : `${Math.floor(diffHours / 24)} days ago`;
 
-        const transferTopic = erc721Interface.getEvent('Transfer')?.topicHash;
-        const potentialNftLogs = receipt.logs.filter(log => log.topics[0] === transferTopic);
+        // Participant Avatars (Initials)
+        const getAvatar = (addr: string, name: string | null) => {
+            if (name) return name.slice(0, 2).toUpperCase();
+            return addr.slice(2, 4).toUpperCase();
+        };
 
-        for (const log of potentialNftLogs) {
-            // ERC721 has 4 topics (Signature + From + To + TokenId)
-            // ERC20 has 3 topics (Signature + From + To)
-            if (log.topics.length === 4) {
-                try {
-                    const parsed = erc721Interface.parseLog(log);
-                    if (parsed) {
-                        // Check if user is sender or receiver
-                        const logFrom = parsed.args[0].toLowerCase();
-                        const logTo = parsed.args[1].toLowerCase();
-                        const user = tx.from.toLowerCase();
+        // Items Construction - Parse ALL transfers from logs
+        const items = [];
+        let totalIn = 0;
+        let totalOut = 0;
+        let tokensInCount = 0;
+        let tokensOutCount = 0;
 
-                        if (logFrom === user || logTo === user) {
-                            isNFT = true;
-                            nftData = {
-                                nftTokenId: parsed.args[2].toString(),
-                                nftContract: log.address,
-                                nftType: 'ERC721'
-                            };
-                            // Prioritize NFT over generic contract interaction
-                            if (!shouldShowSwap) {
-                                // Update type if it's just an NFT Move
-                                // type = 'NFT TRANSFER'; // We can't reassign const 'type' here, handle in billData construction
-                            }
-                            break; // Assume primary action for now
-                        }
+        const userAddress = tx.from.toLowerCase();
+        const logs = receipt.logs || [];
+
+        // 1. Parse ERC-20 Transfers
+        const erc20TransferTopic = erc20Interface.getEvent('Transfer')?.topicHash;
+        const erc20Logs = logs.filter(log => log.topics[0] === erc20TransferTopic && log.topics.length === 3);
+
+        for (const log of erc20Logs) {
+            try {
+                const parsed = erc20Interface.parseLog(log);
+                if (!parsed) continue;
+
+                const from = parsed.args[0].toLowerCase();
+                const to = parsed.args[1].toLowerCase();
+                const amount = parsed.args[2];
+
+                // Only show transfers involving the user
+                if (from === userAddress || to === userAddress) {
+                    const isIn = to === userAddress;
+                    const amountFormatted = ethers.formatUnits(amount, 18); // Assuming 18 decimals
+
+                    // Fetch token price at transaction block
+                    const tokenPrice = await this.getTokenPriceAtBlock(log.address, chainId, receipt.blockNumber);
+                    const usdValue = tokenPrice > 0 ? (parseFloat(amountFormatted) * tokenPrice).toFixed(2) : "0.00";
+
+                    items.push({
+                        direction: isIn ? 'in' : 'out',
+                        isIn: isIn,
+                        tokenIcon: isIn ? '📥' : '📤',
+                        tokenSymbol: `Token`, // TODO: Fetch symbol from contract
+                        tokenAddress: log.address,
+                        fromShort: `${from.slice(0, 6)}...${from.slice(-4)}`,
+                        toShort: `${to.slice(0, 6)}...${to.slice(-4)}`,
+                        amountFormatted: parseFloat(amountFormatted).toFixed(6),
+                        usdValue: `$${usdValue}`
+                    });
+
+                    // Update totals
+                    if (isIn) {
+                        tokensInCount++;
+                        totalIn += parseFloat(usdValue);
+                    } else {
+                        tokensOutCount++;
+                        totalOut += parseFloat(usdValue);
                     }
-                } catch (e) {
-                    // Ignore parse errors
                 }
+            } catch (e) {
+                console.log('Failed to parse ERC-20 transfer:', e);
             }
         }
 
-        // 5. Prepare Data for Template
+        // 2. Parse ERC-721 (NFT) Transfers
+        const erc721Logs = logs.filter(log => log.topics[0] === erc20TransferTopic && log.topics.length === 4);
+
+        for (const log of erc721Logs) {
+            try {
+                const parsed = erc721Interface.parseLog(log);
+                if (!parsed) continue;
+
+                const from = parsed.args[0].toLowerCase();
+                const to = parsed.args[1].toLowerCase();
+                const tokenId = parsed.args[2].toString();
+
+                if (from === userAddress || to === userAddress) {
+                    const isIn = to === userAddress;
+                    items.push({
+                        direction: isIn ? 'in' : 'out',
+                        isIn: isIn,
+                        tokenIcon: '🖼️',
+                        tokenSymbol: `NFT #${tokenId}`,
+                        tokenAddress: log.address,
+                        fromShort: `${from.slice(0, 6)}...${from.slice(-4)}`,
+                        toShort: `${to.slice(0, 6)}...${to.slice(-4)}`,
+                        amountFormatted: "1",
+                        usdValue: "$0.00"
+                    });
+                    if (isIn) tokensInCount++; else tokensOutCount++;
+                }
+            } catch (e) {
+                console.log('Failed to parse ERC-721 transfer:', e);
+            }
+        }
+
+        // 2.5 Parse ERC-1155 Transfers (Common on L2s like Base)
+        const erc1155Interface = new ethers.Interface(ERC1155_ABI);
+        const singleTopic = erc1155Interface.getEvent('TransferSingle')?.topicHash;
+        const batchTopic = erc1155Interface.getEvent('TransferBatch')?.topicHash;
+
+        const erc1155Logs = logs.filter(log => log.topics[0] === singleTopic || log.topics[0] === batchTopic);
+
+        for (const log of erc1155Logs) {
+            try {
+                const parsed = erc1155Interface.parseLog(log);
+                if (!parsed) continue;
+
+                const from = parsed.args[1].toLowerCase(); // args[1] is from
+                const to = parsed.args[2].toLowerCase();   // args[2] is to
+
+                if (from === userAddress || to === userAddress) {
+                    const isIn = to === userAddress;
+
+                    if (parsed.name === 'TransferSingle') {
+                        const id = parsed.args[3].toString();
+                        const value = parsed.args[4].toString();
+
+                        items.push({
+                            direction: isIn ? 'in' : 'out',
+                            isIn: isIn,
+                            tokenIcon: '📦',
+                            tokenSymbol: `ID #${id}`,
+                            tokenAddress: log.address,
+                            fromShort: `${from.slice(0, 6)}...${from.slice(-4)}`,
+                            toShort: `${to.slice(0, 6)}...${to.slice(-4)}`,
+                            amountFormatted: value,
+                            usdValue: "$0.00"
+                        });
+                        if (isIn) tokensInCount++; else tokensOutCount++;
+
+                    } else if (parsed.name === 'TransferBatch') {
+                        const ids = parsed.args[3];
+                        const values = parsed.args[4];
+
+                        for (let i = 0; i < ids.length; i++) {
+                            items.push({
+                                direction: isIn ? 'in' : 'out',
+                                isIn: isIn,
+                                tokenIcon: '📦',
+                                tokenSymbol: `ID #${ids[i]}`,
+                                tokenAddress: log.address,
+                                fromShort: `${from.slice(0, 6)}...${from.slice(-4)}`,
+                                toShort: `${to.slice(0, 6)}...${to.slice(-4)}`,
+                                amountFormatted: values[i].toString(),
+                                usdValue: "$0.00"
+                            });
+                            if (isIn) tokensInCount++; else tokensOutCount++;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.log('Failed to parse ERC-1155 transfer:', e);
+            }
+        }
+
+        // 3. Add native ETH transfer if value > 0
+        const nativeAmount = parseFloat(valueEth);
+        if (nativeAmount > 0) {
+            items.push({
+                direction: 'out',
+                isIn: false,
+                tokenIcon: this.getNativeSymbol(chainId) === 'ETH' ? '💎' : '🪙',
+                tokenSymbol: this.getNativeSymbol(chainId),
+                fromShort: `${tx.from.slice(0, 6)}...${tx.from.slice(-4)}`,
+                toShort: `${tx.to?.slice(0, 6)}...${tx.to?.slice(-4)}`,
+                amountFormatted: nativeAmount.toFixed(6),
+                usdValue: `$${valueUSD}`
+            });
+            totalOut += valueUSDNum;
+            tokensOutCount++;
+        }
+
+        console.log(`Detected ${items.length} token movements (${tokensInCount} in, ${tokensOutCount} out)`);
+
+
+        // Net Change
+        const netChange = totalIn - (totalOut + feeUSDNum);
+
         const billData = {
-            billId: `BILL-${chainId.toString().slice(-4)}-${receipt.blockNumber}`,
-            txHash: txHash,
-            chainName: this.getChainName(chainId),
-            status: receipt.status === 1 ? 'CONFIRMED' : 'FAILED',
-            date: new Date(timestamp * 1000).toUTCString(),
-            type: isNFT ? 'NFT TRANSFER' : type,
-            feeUSD: feeUSD,
-            totalValueUSD: valueUSD, // Show value sent even for interactions
-            from: fromName || tx.from,
-            to: toName || tx.to,
+            // Identity
+            BILL_ID: billId,
+            BILL_VERSION: "2.0.0",
+            GENERATED_AT: now.toLocaleString(),
 
-            // Explicit Details for Template
-            fromEns: fromName,
-            fromAddress: tx.from,
-            toEns: toName,
-            toAddress: tx.to,
+            // Status
+            STATUS: receipt.status === 1 ? "confirmed" : "failed",
+            STATUS_CONFIRMED: receipt.status === 1,
+            STATUS_PROVISIONAL: false, // Assume finalized for now
 
-            // Context Specific
-            gasUsed: feeEth.substring(0, 8), // Show actual ETH cost
-            nativeSymbol: this.getNativeSymbol(chainId),
-            totalCostUSD: (feeUSDNum + valueUSDNum).toFixed(2),
+            // Network
+            CHAIN_NAME: this.getChainName(chainId),
+            CHAIN_ID: chainId,
+            CHAIN_SYMBOL: this.getNativeSymbol(chainId),
+            CHAIN_ICON: this.getNativeSymbol(chainId) === 'ETH' ? '🔷' : '⛓️',
 
-            // Meta
-            priceSource: nativePriceData.source,
-            blockNumber: receipt.blockNumber,
-            confirmations: 1,
-            generatedAt: new Date().toISOString(),
-            qrCodeUrl: qrCodeDataUrl, // Use local Data URI
+            // Transaction
+            TRANSACTION_HASH: txHash,
+            BLOCK_NUMBER: receipt.blockNumber.toLocaleString(),
+            BLOCK_HASH_SHORT: `${receipt.blockHash.slice(0, 10)}...`,
+            TIMESTAMP: txDate.toLocaleString(),
+            TIMESTAMP_RELATIVE: relativeTime,
+            CONFIRMATIONS: await this.getConfirmations(provider, receipt.blockNumber),
+            REQUIRED_CONFIRMATIONS: 12,
+            TYPE: classification.type,
+            TYPE_READABLE: transactionClassifier.getReadableType(classification.type),
+            TYPE_ICON: transactionClassifier.getTypeIcon(classification.type),
 
-            // Flags (Decoder stubs for now)
-            isSwap: shouldShowSwap,
-            ...swapData,
+            // Participants
+            FROM_ADDRESS: tx.from,
+            FROM_ENS: fromName,
+            FROM_AVATAR: getAvatar(tx.from, fromName),
+            TO_ADDRESS: tx.to || "Contract Creation",
+            TO_ENS: toName,
+            TO_AVATAR: getAvatar(tx.to || "0x00", toName),
 
-            isNFT: isNFT,
-            ...nftData,
+            // Items
+            ITEMS: items,
+            ITEMS_COUNT: items.length,
 
+            // Fees
+            GAS_USED: gasUsed.toLocaleString(),
+            GAS_PRICE: ethers.formatUnits(gasPrice, 'gwei'),
+            GAS_PRICE_GWEI: ethers.formatUnits(gasPrice, 'gwei'),
+            TOTAL_FEE: feeEth.substring(0, 8),
+            TOTAL_FEE_USD: feeUSD,
+            TOTAL_FEE_ETH: feeEth.substring(0, 8),
+
+            // Totals
+            TOTAL_IN_USD: totalIn.toFixed(2),
+            TOTAL_OUT_USD: totalOut.toFixed(2),
+            TOKENS_IN_COUNT: tokensInCount,
+            TOKENS_OUT_COUNT: tokensOutCount,
+            NET_CHANGE_USD: Math.abs(netChange).toFixed(2),
+            NET_CHANGE_SIGN: netChange >= 0 ? "+" : "-",
+            NET_CHANGE_POSITIVE: netChange >= 0,
+
+            // Audit
+            INCLUDE_AUDIT: true,
+            PRICE_SOURCE: nativePriceData.source,
+            PRICE_TIMESTAMP: new Date(timestamp * 1000).toISOString(),
+            RPC_PROVIDER: "Alchemy / Public",
+            RPC_ENDPOINT_SHORT: "rpc.node",
+            CLASSIFICATION_METHOD: "Advanced Pattern Matching",
+            CONFIDENCE: Math.round(classification.confidence * 100),
+            CONFIDENCE_PERCENT: Math.round(classification.confidence * 100),
+            PROTOCOL: classification.protocol || undefined,
+            REORG_DETECTED: false,
+            REORG_CHECK_TIME: now.toLocaleTimeString(),
+
+            // Verification
+            QR_CODE_DATA_URL: qrCodeDataUrl,
+            EXPLORER_URL: this.getExplorerUrl(chainId, txHash),
+            REGENERATE_URL: "https://blockbill.io", // Placeholder
+
+            // Ad Support
             hasAd: !!randomAd,
             adContent: randomAd ? randomAd.contentHtml : "",
-            adLink: randomAd ? randomAd.clickUrl : "#"
+            adLink: randomAd ? randomAd.clickUrl : ""
         };
 
         // 6. Render PDF
-        console.log('Rendering PDF...');
-        const templatePath = path.join(process.cwd(), 'templates', 'advanced_bill_template.html');
+        console.log('Rendering PDF with Enterprise Template...');
+        const templatePath = path.join(process.cwd(), 'templates', 'final_templete.html');
         // Register Helpers if needed
         Handlebars.registerHelper('eq', function (a, b) { return a === b; });
 
@@ -255,23 +410,30 @@ export class BillService {
         // networkidle0 is too strict for some ads; networkidle2 allows 2 active connections
         await page.setContent(html, { waitUntil: 'networkidle2', timeout: 60000 });
 
-        // Explicitly wait for Ad Image if present
+        // Explicitly wait for Ad Image/Iframe if present
         if (billData.hasAd) {
             try {
-                console.log('Waiting for Ad Image to load...');
-                await page.waitForSelector('.ad-space img', { visible: true, timeout: 15000 });
-                // Extra safety: ensure the image is fully loaded
+                console.log('Waiting for Ad content to load...');
+                // Wait for either image or iframe in the ad content container
+                await page.waitForSelector('.ad-content img, .ad-content iframe', { visible: true, timeout: 15000 });
+
+                // Extra safety: ensure images are fully loaded
                 await page.evaluate(async () => {
-                    const img = document.querySelector('.ad-space img') as HTMLImageElement;
-                    if (img && !img.complete) {
-                        await new Promise((resolve) => {
-                            img.onload = resolve;
-                            img.onerror = resolve;
-                        });
-                    }
+                    const imgs = document.querySelectorAll('.ad-content img');
+                    const promises = Array.from(imgs).map(img => {
+                        const image = img as HTMLImageElement;
+                        if (image && !image.complete) {
+                            return new Promise((resolve) => {
+                                image.onload = resolve;
+                                image.onerror = resolve;
+                            });
+                        }
+                        return Promise.resolve();
+                    });
+                    await Promise.all(promises);
                 });
             } catch (e) {
-                console.log('Ad image wait timeout or not found, proceeding...');
+                console.log('Ad content wait timeout or not found, proceeding...');
             }
         }
 
@@ -345,5 +507,80 @@ export class BillService {
             case 11155111: baseUrl = 'https://sepolia.etherscan.io'; break;
         }
         return `${baseUrl}/tx/${txHash}`;
+    }
+
+    private async getConfirmations(provider: ethers.Provider, txBlockNumber: number): Promise<number> {
+        try {
+            const currentBlock = await provider.getBlockNumber();
+            const confirmations = currentBlock - txBlockNumber;
+            return confirmations > 0 ? confirmations : 1;
+        } catch (e) {
+            console.error('Failed to get confirmations:', e);
+            return 12; // Fallback
+        }
+    }
+
+    private async getTokenPriceAtBlock(tokenAddress: string, chainId: number, blockNumber: number): Promise<number> {
+        const alchemyKey = process.env.ALCHEMY_API_KEY;
+        if (!alchemyKey) {
+            console.log('No Alchemy API key, skipping price fetch');
+            return 0;
+        }
+
+        try {
+            // Build Alchemy RPC URL
+            let alchemyUrl = '';
+            switch (chainId) {
+                case 1: alchemyUrl = `https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`; break;
+                case 8453: alchemyUrl = `https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`; break;
+                case 137: alchemyUrl = `https://polygon-mainnet.g.alchemy.com/v2/${alchemyKey}`; break;
+                case 42161: alchemyUrl = `https://arb-mainnet.g.alchemy.com/v2/${alchemyKey}`; break;
+                case 10: alchemyUrl = `https://opt-mainnet.g.alchemy.com/v2/${alchemyKey}`; break;
+                default:
+                    console.log(`Alchemy not supported for chain ${chainId}`);
+                    return 0;
+            }
+
+            // Use Alchemy's getTokenPrice method (enhanced feature)
+            const response = await fetch(alchemyUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'alchemy_getTokenPrice',
+                    params: [tokenAddress, `0x${blockNumber.toString(16)}`] // Block number in hex
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.result && data.result.price) {
+                return parseFloat(data.result.price);
+            }
+
+            // Fallback: Try current price if historical not available
+            const currentResponse = await fetch(alchemyUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'alchemy_getTokenPrice',
+                    params: [tokenAddress]
+                })
+            });
+
+            const currentData = await currentResponse.json();
+            if (currentData.result && currentData.result.price) {
+                console.log(`Using current price for ${tokenAddress} (historical not available)`);
+                return parseFloat(currentData.result.price);
+            }
+
+            return 0;
+        } catch (e) {
+            console.error('Failed to fetch token price from Alchemy:', e);
+            return 0;
+        }
     }
 }

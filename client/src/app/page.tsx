@@ -189,28 +189,28 @@ export default function Home() {
                   <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
 
                   <div className="inline-flex items-center gap-2 rounded-lg bg-green-500/10 px-3 py-1 text-xs font-bold text-green-400 uppercase mb-6 tracking-wide border border-green-500/20">
-                    Status: {billData.status}
+                    Status: {billData.STATUS}
                   </div>
                   <h3 className="text-3xl font-bold text-white mb-6 relative z-10">Receipt Ready</h3>
 
                   <div className="space-y-6 relative z-10">
                     <div className="flex justify-between items-center py-4 border-b border-white/5">
                       <span className="text-slate-400 font-medium">Type</span>
-                      <span className="text-slate-200 font-mono font-bold bg-white/5 px-2 py-1 rounded border border-white/5">{billData.type}</span>
+                      <span className="text-slate-200 font-mono font-bold bg-white/5 px-2 py-1 rounded border border-white/5">{billData.TYPE}</span>
                     </div>
                     <div className="flex justify-between items-center py-4 border-b border-white/5">
                       <span className="text-slate-400 font-medium">Network Fee</span>
-                      <span className="text-slate-200 font-mono font-bold">${billData.feeUSD}</span>
+                      <span className="text-slate-200 font-mono font-bold">${billData.TOTAL_FEE_USD}</span>
                     </div>
                     <div className="flex justify-between items-center py-4 border-b border-white/5">
                       <span className="text-slate-400 font-medium">Date</span>
-                      <span className="text-slate-200 font-medium text-right">{billData.date}</span>
+                      <span className="text-slate-200 font-medium text-right">{billData.TIMESTAMP}</span>
                     </div>
                     <div className="flex justify-between items-center py-4">
                       <span className="text-slate-400 font-medium">Chain</span>
                       <span className="flex items-center gap-2 font-bold text-slate-200">
                         <div className="w-2 h-2 rounded-full bg-purple-500"></div>
-                        {billData.chainName}
+                        {billData.CHAIN_NAME}
                       </span>
                     </div>
                   </div>
