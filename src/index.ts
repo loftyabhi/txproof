@@ -174,5 +174,5 @@ app.delete('/api/v1/admin/ads/:id', verifyAdmin, (req, res) => {
 });
 
 app.listen(port, () => {
-    console.log(`⚡ GChain Receipt API running on port ${port}`);
+    console.log(`⚡ Chain Receipt API running on port ${port}`);
 });

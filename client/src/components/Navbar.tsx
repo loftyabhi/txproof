@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useEffect } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { FileText } from 'lucide-react';
@@ -29,7 +31,7 @@ export function Navbar() {
                             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600 text-white shadow-lg shadow-violet-500/20 transition-transform group-hover:scale-110">
                                 <FileText size={20} className="font-bold" />
                             </div>
-                            <span className="text-xl font-bold tracking-tight text-white">GChain Receipt</span>
+                            <span className="text-xl font-bold tracking-tight text-white">Chain Receipt</span>
                         </Link>
 
                         <div className="flex items-center gap-6">

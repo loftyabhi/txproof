@@ -7,7 +7,7 @@ import { base, mainnet, sepolia } from 'wagmi/chains';
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 
 const config = getDefaultConfig({
-    appName: 'GChain Receipt',
+    appName: 'Chain Receipt',
     projectId: process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID || 'YOUR_PROJECT_ID',
     chains: [base, mainnet, sepolia],
     ssr: true,

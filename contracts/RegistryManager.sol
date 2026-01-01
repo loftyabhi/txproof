@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title RegistryManager
- * @notice Manages user registration and signatures for the GChain Bill Generator on Base.
+ * @notice Manages user registration and signatures for the Chain Receipt on Base.
  * @dev Plans are managed off-chain for flexibility; this contract tracks on-chain registration presence.
  */
 contract RegistryManager is Ownable, ReentrancyGuard {

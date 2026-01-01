@@ -211,6 +211,23 @@ export class BillService {
             logs, userAddress, chainId, receipt.blockNumber, provider, timestamp, aliasAddress
         );
 
+        // --- NEW: Fetch Internal Transactions (ETH transfers inside execution) ---
+        console.log('Fetching internal transactions...');
+        const internalTxsRaw = await this.fetchInternalTransactions(txHash, chainId, receipt.blockNumber);
+
+        // Format Internal Txs for the Template
+        const internalTxs = internalTxsRaw.map(tx => ({
+            from: tx.from,
+            to: tx.to,
+            fromShort: `${tx.from.slice(0, 6)}...${tx.from.slice(-4)}`,
+            toShort: `${tx.to.slice(0, 6)}...${tx.to.slice(-4)}`,
+            amount: parseFloat(tx.value).toFixed(6),
+            symbol: this.getNativeSymbol(chainId), // Always native currency for internal txs
+            isError: tx.isError
+        })).filter(tx => parseFloat(tx.amount) > 0); // Only show non-zero value transfers to reduce noise? User didn't specify, but usually 0 value calls are noise. Let's keep > 0 for relevance.
+
+        console.log(`Found ${internalTxs.length} internal transactions`);
+
         // Fallback for Smart Wallets: If no movements found for sender, check if recipient has movements
         // BUT skip if we already identified a specific AA Sender (we trust our classification)
         if (items.length === 0 && tx.to && tx.to.toLowerCase() !== userAddress && !classification.details?.sender) {
@@ -341,6 +358,8 @@ export class BillService {
             // Items
             ITEMS: items,
             ITEMS_COUNT: items.length,
+            INTERNAL_TXS: internalTxs,
+            HAS_INTERNAL_TXS: internalTxs.length > 0,
 
             // Fees
             GAS_USED: gasUsed.toLocaleString(),
@@ -382,47 +401,10 @@ export class BillService {
             adLink: randomAd ? randomAd.clickUrl : ""
         };
 
-        // 6. Render PDF
-        console.log('Rendering PDF with Enterprise Template...');
-        const templatePath = path.join(process.cwd(), 'templates', 'final_templete.html');
-        // Register Helpers if needed
-        Handlebars.registerHelper('eq', function (a, b) { return a === b; });
-
-        const templateHtml = fs.readFileSync(templatePath, 'utf8');
-        const template = Handlebars.compile(templateHtml);
-        const html = template(billData);
-
-        const browser = await puppeteer.launch({ headless: true });
-        const page = await browser.newPage();
-        // networkidle0 is too strict for some ads; networkidle2 allows 2 active connections
-        await page.setContent(html, { waitUntil: 'networkidle2', timeout: 60000 });
-
-        // Explicitly wait for Ad Image/Iframe if present
-        if (billData.hasAd) {
-            try {
-                console.log('Waiting for Ad content to load...');
-                // Wait for either image or iframe in the ad content container
-                await page.waitForSelector('.ad-content img, .ad-content iframe', { visible: true, timeout: 15000 });
-
-                // Extra safety: ensure images are fully loaded
-                await page.evaluate(async () => {
-                    const imgs = document.querySelectorAll('.ad-content img');
-                    const promises = Array.from(imgs).map(img => {
-                        const image = img as HTMLImageElement;
-                        if (image && !image.complete) {
-                            return new Promise((resolve) => {
-                                image.onload = resolve;
-                                image.onerror = resolve;
-                            });
-                        }
-                        return Promise.resolve();
-                    });
-                    await Promise.all(promises);
-                });
-            } catch (e) {
-                console.log('Ad content wait timeout or not found, proceeding...');
-            }
-        }
+        // 6. Render PDF using TWO-PASS STRATEGY
+        // WHY: Puppeteer's @page CSS support is unreliable. We generate page 1 separately (no header template)
+        // and pages 2+ separately (with displayHeaderFooter), then merge via pdf-lib.
+        console.log('Rendering PDF with Two-Pass Strategy...');
 
         const outputDir = path.join(process.cwd(), 'client', 'public', 'bills');
         if (!fs.existsSync(outputDir)) {
@@ -430,18 +412,194 @@ export class BillService {
         }
 
         const fileName = `${txHash}.pdf`;
-        const pdfPath = path.join(outputDir, fileName);
+        const finalPdfPath = path.join(outputDir, fileName);
 
-        await page.pdf({
-            path: pdfPath,
-            format: 'A4',
-            printBackground: true
-        });
+        // Temp paths for intermediate PDFs (cleaned up after merge)
+        const tempDir = path.join(process.cwd(), 'temp');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
 
-        await browser.close();
+        const firstPagePath = path.join(tempDir, `${txHash}-page1.pdf`);
+        const remainingPagesPath = path.join(tempDir, `${txHash}-remaining.pdf`);
+
+        // Register Handlebars helpers
+        Handlebars.registerHelper('eq', function (a, b) { return a === b; });
+
+        const templatePath = path.join(process.cwd(), 'templates', 'final_templete.html');
+        const templateHtml = fs.readFileSync(templatePath, 'utf8');
+        const template = Handlebars.compile(templateHtml);
+
+        // PASS 1: Generate first page (full custom header, NO displayHeaderFooter)
+        const firstPageHtml = template(billData);
+
+        const browser = await puppeteer.launch({ headless: true });
+
+        try {
+            // **FIRST PAGE PDF**
+            const page1 = await browser.newPage();
+            await page1.setContent(firstPageHtml, { waitUntil: 'networkidle2', timeout: 60000 });
+
+            // Wait for ads if present
+            if (billData.hasAd) {
+                try {
+                    await page1.waitForSelector('.ad-content img, .ad-content iframe', { visible: true, timeout: 15000 });
+                    await page1.evaluate(async () => {
+                        const imgs = document.querySelectorAll('.ad-content img');
+                        await Promise.all(Array.from(imgs).map(img => {
+                            const image = img as HTMLImageElement;
+                            if (image && !image.complete) {
+                                return new Promise((resolve) => {
+                                    image.onload = resolve;
+                                    image.onerror = resolve;
+                                });
+                            }
+                            return Promise.resolve();
+                        }));
+                    });
+                } catch (e) {
+                    console.log('Ad wait timeout, proceeding...');
+                }
+            }
+
+            // Hide running-header on first page (CSS-based, works reliably within single page)
+            await page1.evaluate(() => {
+                const runningHeader = document.querySelector('.running-header') as HTMLElement;
+                if (runningHeader) {
+                    runningHeader.style.display = 'none';
+                }
+            });
+
+            // **UNIFIEY GEOMETRY FOR BOTH PASSES**
+            // To prevent content from reflowing/shifting between Pass 1 and Pass 2, 
+            // BOTH passes must have Identical margins.
+            const unifiedMargins = {
+                top: '80px',     // Space for Header (Pass 1 fills this with HTML, Pass 2 with Template)
+                bottom: '100px', // Space for Footer
+                left: '40px',
+                right: '40px'
+            };
+
+            // PASS 1: Generate first page
+            // We use the same 'top: 80px' margin.
+            // But Page 1 HTML has a custom header that needs to be visible.
+            // The HTML CSS @page margins will be overridden by these puppeteer margins.
+            await page1.pdf({
+                path: firstPagePath,
+                format: 'A4',
+                printBackground: true,
+                displayHeaderFooter: false,
+                margin: unifiedMargins
+            });
+            await page1.close();
+
+            // **REMAINING PAGES PDF (with native Puppeteer header)**
+            const page2 = await browser.newPage();
+
+            // Same HTML, same wait settings
+            await page2.setContent(firstPageHtml, { waitUntil: 'networkidle2', timeout: 60000 });
+
+            // Hide first-page content and main header using visibility: hidden
+            // Since margins are now identical, the layout box is identical.
+            // Hiding the header with visibility:hidden keeps the vertical rhythm EXACTLY the same.
+            await page2.evaluate(() => {
+                const firstPageHeader = document.querySelector('.first-page-header') as HTMLElement;
+                const mainHeader = document.querySelector('.header') as HTMLElement;
+                const runningHeader = document.querySelector('.running-header') as HTMLElement;
+
+                // PRESERVE LAYOUT but hide content
+                if (firstPageHeader) firstPageHeader.style.visibility = 'hidden';
+                if (mainHeader) mainHeader.style.visibility = 'hidden';
+
+                // Running header logic:
+                // We actually want Puppeteer's headerTemplate to show.
+                // The HTML .running-header was just for testing; we can hide it fully.
+                if (runningHeader) runningHeader.style.display = 'none';
+            });
+
+            // Render with native header template
+            await page2.pdf({
+                path: remainingPagesPath,
+                format: 'A4',
+                printBackground: true,
+                displayHeaderFooter: true,
+                headerTemplate: `
+                    <div style="width: 100%; font-size: 10px; padding: 10px 40px; border-bottom: 3px solid #7c3aed; display: flex; justify-content: space-between; align-items: center; margin-bottom: 0;">
+                        <span style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 14px;">⚡</span>
+                            <span style="font-weight: 700; color: #111827;">Chain Receipt</span>
+                        </span>
+                        <span style="color: #6b7280; font-family: sans-serif;">
+                            Bill #${billData.BILL_ID} | Page <span class="pageNumber"></span>
+                        </span>
+                    </div>
+                `,
+                footerTemplate: `
+                    <div style="width: 100%; font-size: 8px; padding: 10px 40px; text-align: center; color: #6b7280; font-family: sans-serif; line-height: 1.5;">
+                        <div style="border-top: 1px solid #e5e7eb; padding-top: 10px; margin-bottom: 6px;">
+                            <span style="font-weight: 700; color: #111827;">Generated by Chain Receipt</span>
+                            <span style="margin: 0 4px;">•</span>
+                            <span>Professional Blockchain Intelligence</span>
+                        </div>
+                        <div style="margin-bottom: 4px; font-size: 7px; opacity: 0.8;">
+                           Values are estimates based on transaction time market data. Verify independently. Not financial advice.
+                        </div>
+                        <div style="font-size: 7px;">
+                            © ${new Date().getFullYear()} Chain Receipt. All rights reserved.
+                        </div>
+                    </div>
+                `,
+                margin: unifiedMargins
+            });
+            await page2.close();
+
+            // **MERGE PDFs using pdf-lib**
+            const { PDFDocument } = await import('pdf-lib');
+
+            const firstPagePdfBytes = fs.readFileSync(firstPagePath);
+            const remainingPagesPdfBytes = fs.readFileSync(remainingPagesPath);
+
+            const firstPagePdf = await PDFDocument.load(firstPagePdfBytes);
+            const remainingPagesPdf = await PDFDocument.load(remainingPagesPdfBytes);
+
+            const mergedPdf = await PDFDocument.create();
+
+            // Copy first page
+            const [page1Copied] = await mergedPdf.copyPages(firstPagePdf, [0]);
+            mergedPdf.addPage(page1Copied);
+
+            // Copy remaining pages (skip first page of second PDF which contains hidden content)
+            const remainingPagesCount = remainingPagesPdf.getPageCount();
+            if (remainingPagesCount > 1) {
+                // Only merge if there are actually additional pages beyond the first
+                const indicesToCopy = Array.from({ length: remainingPagesCount - 1 }, (_, i) => i + 1);
+                const copiedPages = await mergedPdf.copyPages(remainingPagesPdf, indicesToCopy);
+                copiedPages.forEach(page => mergedPdf.addPage(page));
+            }
+
+            const mergedPdfBytes = await mergedPdf.save();
+
+            console.log(`[BillService] Writing final PDF to: ${finalPdfPath}`);
+            fs.writeFileSync(finalPdfPath, mergedPdfBytes);
+            console.log(`[BillService] PDF write successful. Size: ${mergedPdfBytes.length} bytes`);
+
+            // Verify existence immediately
+            if (fs.existsSync(finalPdfPath)) {
+                console.log(`[BillService] Verified file exists at: ${finalPdfPath}`);
+            } else {
+                console.error(`[BillService] CRITICAL: File not found after write at: ${finalPdfPath}`);
+            }
+
+            // Cleanup temp files
+            fs.unlinkSync(firstPagePath);
+            fs.unlinkSync(remainingPagesPath);
+
+        } finally {
+            await browser.close();
+        }
 
         return {
-            pdfPath: `/bills/${fileName}`, // Relative path for frontend
+            pdfPath: `/bills/${fileName}`,
             billData
         };
     }
@@ -570,6 +728,176 @@ export class BillService {
             return 0;
         }
     }
+    private getExplorerApiUrl(chainId: number): string {
+        switch (chainId) {
+            case 1: return 'https://api.etherscan.io/api';
+            case 8453: return 'https://api.basescan.org/api';
+            case 137: return 'https://api.polygonscan.com/api';
+            case 42161: return 'https://api.arbiscan.io/api';
+            case 10: return 'https://api-optimistic.etherscan.io/api';
+            case 56: return 'https://api.bscscan.com/api';
+            case 43114: return 'https://api.snowtrace.io/api';
+            case 11155111: return 'https://api-sepolia.etherscan.io/api';
+            default: return '';
+        }
+    }
+
+    private async fetchInternalTransactions(txHash: string, chainId: number, blockNumber?: number): Promise<any[]> {
+        // 1. Try Alchemy first for supported chains (if blockNumber is provided)
+        if (blockNumber && this.isAlchemySupported(chainId)) {
+            console.log(`Trying Alchemy for internal txs (Chain ${chainId})...`);
+            const alchemyTxs = await this.fetchInternalTransactionsFromAlchemy(txHash, chainId, blockNumber);
+            if (alchemyTxs.length > 0) {
+                return alchemyTxs;
+            }
+            if (alchemyTxs.length === 0 && this.alchemyCallsMade) {
+                // If Alchemy call succeeded but returned empty, it likely means there ARE no internal txs.
+                // However, to be safe/consistent with previous logic or if Alchemy misses some, we could fallback.
+                // But usually Alchemy is authoritative. Let's return empty if we are confident.
+                // Actually, let's allow fallback just in case Alchemy fails to index/respond correctly or if we want to be double sure.
+                // But for now, let's assume if Alchemy returns valid empty array, it's empty.
+                // Wait, did the call fail or just return 0? I'll handle that inside the helper.
+            }
+        }
+
+        // 2. Fallback to Explorer API (Etherscan/BaseScan/etc)
+        const apiUrl = this.getExplorerApiUrl(chainId);
+        if (!apiUrl) return [];
+
+        const apiKey = process.env.ETHERSCAN_API_KEY || 'YourApiKeyToken'; // Fallback to demo key if not set
+
+        try {
+            console.log(`Falling back to Explorer API for internal txs...`);
+            // Etherscan API: module=account&action=txlistinternal&txhash={txHash}
+            const url = `${apiUrl}?module=account&action=txlistinternal&txhash=${txHash}&apikey=${apiKey}`;
+
+            const response = await fetch(url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': 'application/json'
+                }
+            });
+            const data = await response.json();
+
+            if (data.status === '1' && Array.isArray(data.result)) {
+                return data.result.map((tx: any) => ({
+                    from: tx.from,
+                    to: tx.to,
+                    value: ethers.formatEther(tx.value),
+                    isError: tx.isError === '1',
+                    type: tx.type, // call, create, suicide, etc.
+                    gasUsed: tx.gasUsed
+                }));
+            }
+            // If Explorer returns empty or fails, try Blockscout
+        } catch (error) {
+            console.warn(`Failed to fetch internal txs from Explorer for chain ${chainId}:`, error);
+        }
+
+        // 3. Fallback to Blockscout (Keyless / permissive free tier)
+        try {
+            console.log('Falling back to Blockscout for internal txs...');
+            const blockscoutTxs = await this.fetchInternalTransactionsFromBlockscout(txHash, chainId);
+            if (blockscoutTxs.length > 0) return blockscoutTxs;
+        } catch (error) {
+            console.warn(`Failed to fetch internal txs from Blockscout for chain ${chainId}:`, error);
+        }
+
+        return [];
+    }
+
+    private async fetchInternalTransactionsFromBlockscout(txHash: string, chainId: number): Promise<any[]> {
+        let baseUrl = '';
+        switch (chainId) {
+            case 8453: baseUrl = 'https://base.blockscout.com/api'; break;
+            case 10: baseUrl = 'https://optimism.blockscout.com/api'; break;
+            // Add others if known
+            default: return [];
+        }
+
+        const url = `${baseUrl}?module=account&action=txlistinternal&txhash=${txHash}`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.status === '1' && Array.isArray(data.result)) {
+            return data.result.map((tx: any) => ({
+                from: tx.from,
+                to: tx.to,
+                value: ethers.formatEther(tx.value),
+                isError: tx.isError === '1',
+                type: tx.type,
+                gasUsed: tx.gasUsed
+            }));
+        }
+        return [];
+    }
+
+
+    private isAlchemySupported(chainId: number): boolean {
+        return [1, 8453, 137, 42161, 10, 11155111].includes(chainId);
+    }
+
+    private alchemyCallsMade = false;
+
+    private async fetchInternalTransactionsFromAlchemy(txHash: string, chainId: number, blockNumber: number): Promise<any[]> {
+        const alchemyKey = process.env.ALCHEMY_API_KEY;
+        if (!alchemyKey) return [];
+
+        let alchemyUrl = '';
+        switch (chainId) {
+            case 1: alchemyUrl = `https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`; break;
+            case 8453: alchemyUrl = `https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`; break;
+            case 137: alchemyUrl = `https://polygon-mainnet.g.alchemy.com/v2/${alchemyKey}`; break;
+            case 42161: alchemyUrl = `https://arb-mainnet.g.alchemy.com/v2/${alchemyKey}`; break;
+            case 10: alchemyUrl = `https://opt-mainnet.g.alchemy.com/v2/${alchemyKey}`; break;
+            case 11155111: alchemyUrl = `https://eth-sepolia.g.alchemy.com/v2/${alchemyKey}`; break;
+            default: return [];
+        }
+
+        try {
+            const hexBlock = `0x${blockNumber.toString(16)}`;
+
+            const response = await fetch(alchemyUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'alchemy_getAssetTransfers',
+                    params: [{
+                        fromBlock: hexBlock,
+                        toBlock: hexBlock,
+                        category: ['internal'],
+                        withMetadata: false,
+                        excludeZeroValue: true
+                    }]
+                })
+            });
+
+            const data = await response.json();
+            this.alchemyCallsMade = true;
+
+            if (data.result && Array.isArray(data.result.transfers)) {
+                // Filter for transfers belonging to THIS transaction
+                const transfers = data.result.transfers.filter((t: any) => t.hash && t.hash.toLowerCase() === txHash.toLowerCase());
+
+                return transfers.map((tx: any) => ({
+                    from: tx.from,
+                    to: tx.to,
+                    value: tx.value?.toString() || '0', // Alchemy returns value as number or string? usually number.
+                    isError: false, // Alchemy doesn't explicitly return error status for successful internal transfers? 
+                    type: 'call', // Default
+                    gasUsed: '0' // Not provided by this endpoint
+                }));
+            }
+            return [];
+        } catch (error) {
+            console.warn(`Failed to fetch internal txs from Alchemy for chain ${chainId}:`, error);
+            // Return empty array so fallback can try
+            return [];
+        }
+    }
+
     private getEnvelopeLabel(type: number, enumObj: any): string {
         switch (type) {
             case enumObj.LEGACY: return 'LEGACY';

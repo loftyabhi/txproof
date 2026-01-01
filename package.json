@@ -1,5 +1,5 @@
 {
-  "name": "gchain-receipt",
+  "name": "chain-receipt",
   "version": "1.0.0",
   "description": "Blockchain bill generator system",
   "main": "index.js",
@@ -37,6 +37,7 @@
     "handlebars": "^4.7.8",
     "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.3",
+    "pdf-lib": "^1.17.1",
     "puppeteer": "^24.34.0",
     "qrcode": "^1.5.4"
   }

@@ -21,6 +21,9 @@ export default function Home() {
     e.preventDefault();
     if (!txHash) return;
 
+    // Sanitize input: remove all whitespace/newlines
+    const cleanTxHash = txHash.trim().replace(/\s/g, '');
+
     setLoading(true);
     setError('');
     setBillData(null);
@@ -32,7 +35,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          txHash,
+          txHash: cleanTxHash,
           chainId,
           connectedWallet: address // Pass connected wallet to determine IN/OUT direction
         })

@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BlockBill - Transaction Receipt {{BILL_ID}}</title>
+    <title>Chain Receipt - Transaction Receipt {{BILL_ID}}</title>
     <style>
         /* ==================== GLOBAL RESET & BASE ==================== */
         * {
@@ -15,7 +15,17 @@
 
         @page {
             size: A4;
+            /* Puppeteer sets the real margins (40mm/80px etc) */
             margin: 0;
+        }
+
+        @page :first {
+            margin: 15mm 15mm 20mm 15mm;
+        }
+
+        /* Page counter */
+        body {
+            counter-reset: page;
         }
 
         :root {
@@ -82,11 +92,18 @@
         }
 
         .page {
-            width: 210mm;
-            min-height: 297mm;
-            padding: 15mm;
+            width: 100%;
+            /* Let Puppeteer's margins dictate the width */
+            min-height: 100vh;
+            /* Fill the view */
             background: white;
             position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .page-content {
+            flex: 1;
         }
 
         /* ==================== PAGE BREAK CONTROLS ==================== */
@@ -98,9 +115,26 @@
         .smart-table,
         .totals-group,
         .feature-total,
-        .footer-group {
+        .footer-group,
+        .section-header,
+        /* Keep header with its content */
+        .items-section,
+        .fees-section {
             page-break-inside: avoid;
             break-inside: avoid;
+        }
+
+        /* 
+           Compensate for Puppeteer's 80px Top Margin on Page 1.
+           Since Puppeteer pushes EVERYTHING down by 80px, the visual header needs to "pull up" 
+           into that whitespace if we want it to look normal, OR we accept the 80px whitespace.
+           
+           Since Pass 1 has displayHeaderFooter: false, the top 80px is just white space.
+           We can safely let the content start there.
+        */
+        @page {
+            /* We let Puppeteer control margins now */
+            margin: 0;
         }
 
         .footer-group {
@@ -116,8 +150,6 @@
         /* Allow breaking before major sections if needed */
         .transaction-section,
         .participants-section,
-        .items-section,
-        .fees-section,
         .totals-section {
             page-break-before: auto;
             break-before: auto;
@@ -143,8 +175,18 @@
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: var(--space-xl);
-            padding-bottom: var(--space-lg);
+            /* 
+               We have unified top margin to 80px (approx 21mm) to match Page 2.
+               Standard A4 print margin is often 15-20mm. 
+               Puppeteer: 80px = ~21mm. 
+               The header is now pushed down by 80px whitespace.
+               We can pull it up slightly if it feels too low, or leave it.
+               Let's reduce the bottom margin slightly to tighten the rhythm.
+            */
+            margin-bottom: var(--space-lg);
+            /* Was xl */
+            padding-bottom: var(--space-md);
+            /* Was lg */
             border-bottom: 3px solid var(--primary-purple);
             position: relative;
         }
@@ -185,11 +227,8 @@
         .logo-text {
             font-size: 26px;
             font-weight: 700;
-            background: linear-gradient(135deg, var(--primary-purple) 0%, var(--primary-purple-dark) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            letter-spacing: -0.5px;
+            color: var(--gray-900);
+            letter-spacing: -0.8px;
         }
 
         .logo-tagline {
@@ -229,9 +268,10 @@
         /* ==================== STATUS & TYPE BADGES ==================== */
         .badges {
             display: flex;
-            gap: var(--space-sm);
+            gap: 6px;
             justify-content: flex-end;
             flex-wrap: wrap;
+            align-items: center;
         }
 
         .badge {
@@ -392,7 +432,9 @@
 
         /* ==================== SECTION FRAMEWORK ==================== */
         .section {
-            margin-bottom: var(--space-xl);
+            /* Standardize vertical gap */
+            margin-bottom: var(--space-lg);
+            /* Was xl - tighten up */
             page-break-inside: avoid;
         }
 
@@ -400,8 +442,10 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: var(--space-md);
-            padding-bottom: var(--space-sm);
+            margin-bottom: var(--space-sm);
+            /* Was md */
+            padding-bottom: var(--space-xs);
+            /* Was sm */
             border-bottom: 2px solid var(--gray-200);
         }
 
@@ -429,16 +473,16 @@
         /* ==================== INFO GRID SYSTEM ==================== */
         .info-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: var(--space-lg);
         }
 
         .info-grid-3 {
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
         }
 
         .info-grid-4 {
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
         }
 
         .info-card {
@@ -474,7 +518,8 @@
             font-size: 13px;
             color: var(--gray-900);
             font-weight: 600;
-            word-break: break-all;
+            word-break: break-word;
+            overflow-wrap: break-word;
         }
 
         .info-value-large {
@@ -555,7 +600,7 @@
             background: white;
             border: 1px solid var(--gray-200);
             border-radius: var(--radius-lg);
-            overflow: hidden;
+            overflow-x: auto;
             margin-top: var(--space-md);
         }
 
@@ -748,7 +793,7 @@
 
         .totals-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(2, 1fr);
             gap: var(--space-xl);
             margin-bottom: var(--space-xl);
             position: relative;
@@ -824,10 +869,13 @@
         /* ==================== AUDIT & VERIFICATION ==================== */
         .audit-section {
             background: linear-gradient(135deg, var(--warning-light) 0%, #fef9c3 100%);
-            border: 2px solid var(--warning);
+            border: 1px solid var(--warning);
             border-radius: var(--radius-lg);
             padding: var(--space-lg);
             margin-top: var(--space-xl);
+            margin-bottom: var(--space-xl);
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
 
         .audit-header {
@@ -951,55 +999,64 @@
             color: var(--gray-900);
         }
 
-        /* ==================== AD SECTION ==================== */
+        /* ==================== AD SECTION (LEADERBOARD 728x90) ==================== */
         .ad-section {
-            margin: var(--space-2xl) 0;
-            padding: var(--space-xl);
+            width: 728px;
+            height: auto;
+            min-height: 90px;
+            margin: var(--space-2xl) auto;
+            padding: 0;
             background: linear-gradient(135deg, var(--gray-50) 0%, white 100%);
             border: 2px dashed var(--primary-purple-light);
             border-radius: var(--radius-lg);
+            display: block;
             text-align: center;
+            overflow: hidden;
             page-break-inside: avoid;
         }
 
         .ad-title {
-            font-size: 10px;
-            color: var(--gray-500);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            font-weight: 700;
-            margin-bottom: var(--space-md);
+            display: none;
         }
 
         .ad-content {
+            width: 100%;
+            min-height: 90px;
             background: white;
-            padding: var(--space-lg);
-            border-radius: var(--radius-md);
-            border: 1px solid var(--gray-200);
-            box-shadow: var(--shadow-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--space-sm);
+        }
+
+        .ad-content iframe,
+        .ad-content img {
+            max-width: 728px !important;
+            max-height: 90px !important;
         }
 
         .ad-placeholder {
-            padding: var(--space-xl);
+            padding: var(--space-md);
             color: var(--gray-600);
+            text-align: center;
         }
 
         .ad-placeholder-title {
-            font-size: 16px;
+            font-size: 13px;
             font-weight: 700;
             color: var(--primary-purple);
-            margin-bottom: var(--space-sm);
+            margin-bottom: 2px;
         }
 
         .ad-placeholder-text {
-            font-size: 12px;
+            font-size: 9px;
             color: var(--gray-500);
         }
 
         .ad-placeholder-link {
             display: inline-block;
-            margin-top: var(--space-md);
-            padding: var(--space-sm) var(--space-lg);
+            margin-top: 4px;
+            padding: 4px 12px;
             background: var(--primary-purple);
             color: white;
             text-decoration: none;
@@ -1076,8 +1133,8 @@
 
         .footer-grid {
             display: grid;
-            grid-template-columns: 2fr 1fr 1fr;
-            gap: var(--space-xl);
+            grid-template-columns: 1.5fr 1fr 1fr;
+            gap: var(--space-lg);
             margin-bottom: var(--space-lg);
         }
 
@@ -1119,6 +1176,56 @@
             margin-top: var(--space-sm);
             font-size: 8px;
             line-height: 1.5;
+        }
+
+        /* ==================== RUNNING HEADER (Pages 2+) ==================== */
+        .first-page-header {
+            page-break-after: avoid;
+        }
+
+        .running-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 0;
+            margin-bottom: var(--space-lg);
+            background: white;
+            border-bottom: 2px solid var(--primary-purple-light);
+            page-break-before: always;
+            page-break-after: avoid;
+        }
+
+        .running-header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .running-header-logo {
+            font-size: 16px;
+        }
+
+        .running-header-brand {
+            font-weight: 700;
+            font-size: 12px;
+            color: var(--gray-900);
+        }
+
+        .running-header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 10px;
+            color: var(--gray-600);
+        }
+
+        .bill-id-small {
+            font-weight: 600;
+            color: var(--gray-700);
+        }
+
+        .page-number::before {
+            content: "Page " counter(page);
         }
 
         /* ==================== UTILITY CLASSES ==================== */
@@ -1229,427 +1336,496 @@
 
 <body>
     <div class="page">
-        <!-- ==================== HEADER ==================== -->
-        <header class="header">
-            <div class="logo-section">
-                <div class="logo-icon">⚡</div>
-                <div class="logo-text-wrapper">
-                    <div class="logo-text">BlockBill</div>
-                    <div class="logo-tagline">Transaction Intelligence</div>
+        <!-- Main Header (Page 1 only) -->
+        <div class="first-page-header">
+            <!-- ==================== HEADER ==================== -->
+            <header class="header">
+                <div class="logo-section">
+                    <div class="logo-icon">⚡</div>
+                    <div class="logo-text-wrapper">
+                        <div class="logo-text">Chain Receipt</div>
+                        <div class="logo-tagline">Blockchain Transaction Receipts</div>
+                    </div>
                 </div>
-            </div>
 
-            <div class="bill-meta">
-                <div class="bill-number">Bill #{{BILL_ID}}</div>
-                <h1 class="bill-title">Transaction Receipt</h1>
-                <div class="bill-date">Generated: {{GENERATED_AT}}</div>
-                <div class="badges">
-                    <span class="badge {{#if STATUS_CONFIRMED}}badge-confirmed{{else}}badge-failed{{/if}}">
-                        <span class="badge-icon">{{#if STATUS_CONFIRMED}}✔{{else}}✖{{/if}}</span>
-                        {{#if STATUS_CONFIRMED}}Confirmed{{else}}Failed{{/if}}
-                    </span>
-                    <span class="badge badge-type">
-                        <span class="badge-icon">{{TYPE_ICON}}</span>
-                        {{TYPE_READABLE}}
-                    </span>
-                    {{#if IS_MULTISIG}}
-                    <span class="badge badge-security">
-                        <span class="badge-icon">🔐</span>
-                        Multisig
-                    </span>
-                    {{/if}}
-                    {{#if IS_SMART_ACCOUNT}}
-                    <span class="badge badge-security">
-                        <span class="badge-icon">🛡️</span>
-                        Smart Account
-                    </span>
-                    {{/if}}
-                    {{#if ENVELOPE_LABEL}}
-                    <span class="badge badge-technical">
-                        <span class="badge-icon">✉️</span>
-                        {{ENVELOPE_LABEL}}
-                    </span>
-                    {{/if}}
+                <div class="bill-meta">
+                    <div class="bill-number">Bill #{{BILL_ID}}</div>
+                    <h1 class="bill-title">Transaction Receipt</h1>
+                    <div class="bill-date">Generated: {{GENERATED_AT}}</div>
+                    <div class="badges">
+                        <span class="badge {{#if STATUS_CONFIRMED}}badge-confirmed{{else}}badge-failed{{/if}}">
+                            <span class="badge-icon">{{#if STATUS_CONFIRMED}}✔{{else}}✖{{/if}}</span>
+                            {{#if STATUS_CONFIRMED}}Confirmed{{else}}Failed{{/if}}
+                        </span>
+                        <span class="badge badge-type">
+                            <span class="badge-icon">{{TYPE_ICON}}</span>
+                            {{TYPE_READABLE}}
+                        </span>
+                        {{#if IS_MULTISIG}}
+                        <span class="badge badge-security">
+                            <span class="badge-icon">🔐</span>
+                            Multisig
+                        </span>
+                        {{/if}}
+                        {{#if IS_SMART_ACCOUNT}}
+                        <span class="badge badge-security">
+                            <span class="badge-icon">🛡️</span>
+                            Smart Account
+                        </span>
+                        {{/if}}
+                        {{#if ENVELOPE_LABEL}}
+                        <span class="badge badge-technical">
+                            <span class="badge-icon">✉️</span>
+                            {{ENVELOPE_LABEL}}
+                        </span>
+                        {{/if}}
+                    </div>
                 </div>
-            </div>
-        </header>
-
-        <!-- ==================== PROVISIONAL WARNING (conditional) ==================== -->
-        {{#if STATUS_PROVISIONAL}}
-        <div class="alert-banner">
-            <div class="alert-icon">⚠️</div>
-            <div class="alert-content">
-                <div class="alert-title">Provisional Transaction Status</div>
-                <div class="alert-message">
-                    This transaction has {{CONFIRMATIONS}} confirmations. We recommend waiting for at least
-                    {{REQUIRED_CONFIRMATIONS}} confirmations before considering this transaction final. The data in this
-                    bill may change if a blockchain reorganization occurs.
-                </div>
-            </div>
+            </header>
         </div>
-        {{/if}}
+        <!-- End first-page-header -->
 
-        <!-- ==================== NETWORK BANNER ==================== -->
-        <div class="network-banner">
-            <div class="network-info">
-                <div class="network-icon">{{CHAIN_ICON}}</div>
-                <div class="network-details">
-                    <h3>{{CHAIN_NAME}} Network</h3>
-                    <p>Chain ID: {{CHAIN_ID}} • Native Token: {{CHAIN_SYMBOL}}</p>
-                </div>
+        <!-- Running Header for Pages 2+ -->
+        <div class="running-header">
+            <div class="running-header-left">
+                <span class="running-header-logo">⚡</span>
+                <span class="running-header-brand">Chain Receipt</span>
             </div>
-            <div class="network-stats">
-                <div class="network-stat">
-                    <div class="network-stat-label">Block Height</div>
-                    <div class="network-stat-value">{{BLOCK_NUMBER}}</div>
-                </div>
-                <div class="network-stat">
-                    <div class="network-stat-label">Confirmations</div>
-                    <div class="network-stat-value">{{CONFIRMATIONS}}</div>
-                </div>
+            <div class="running-header-right">
+                <span class="bill-id-small">Bill #{{BILL_ID}}</span>
+                <span class="page-number"></span>
             </div>
         </div>
 
-        <!-- ==================== TRANSACTION OVERVIEW ==================== -->
-        <section class="section">
-            <div class="section-header">
-                <h2 class="section-title">
-                    <span class="section-icon">📊</span>
-                    Transaction Overview
-                </h2>
-                <a href="{{EXPLORER_URL}}" class="section-action">View on Explorer →</a>
-            </div>
-
-            <div class="info-grid">
-                <div class="info-card info-card-highlight">
-                    <div class="info-label">
-                        <span class="info-label-icon">🔗</span>
-                        Transaction Hash
-                    </div>
-                    <div class="info-value info-value-mono">{{TRANSACTION_HASH}}</div>
-                    <div class="info-subtext">Unique blockchain identifier</div>
-                </div>
-
-                <div class="info-card">
-                    <div class="info-label">
-                        <span class="info-label-icon">📦</span>
-                        Block Number
-                    </div>
-                    <div class="info-value info-value-large">{{BLOCK_NUMBER}}</div>
-                    <div class="info-subtext">Block Hash: {{BLOCK_HASH_SHORT}}</div>
-                </div>
-
-                <div class="info-card">
-                    <div class="info-label">
-                        <span class="info-label-icon">🕐</span>
-                        Timestamp
-                    </div>
-                    <div class="info-value">{{TIMESTAMP}}</div>
-                    <div class="info-subtext">{{TIMESTAMP_RELATIVE}}</div>
-                </div>
-
-                <div class="info-card">
-                    <div class="info-label">
-                        <span class="info-label-icon">✓</span>
-                        Confirmations
-                    </div>
-                    <div class="info-value info-value-large">{{CONFIRMATIONS}}</div>
-                    <div class="info-subtext">Required: {{REQUIRED_CONFIRMATIONS}}</div>
-                </div>
-            </div>
-        </section>
-
-        <!-- ==================== PARTICIPANTS ==================== -->
-        <section class="section">
-            <div class="section-header">
-                <h2 class="section-title">
-                    <span class="section-icon">👥</span>
-                    Transaction Participants
-                </h2>
-            </div>
-
-            <div class="info-grid">
-                <div class="address-component">
-                    <div class="address-avatar">{{FROM_AVATAR}}</div>
-                    <div class="address-details">
-                        <div class="address-label">Sender</div>
-                        {{#if FROM_ENS}}
-                        <div class="address-ens">{{FROM_ENS}}</div>
-                        {{/if}}
-                        <div class="address-value">{{FROM_ADDRESS}}</div>
-                    </div>
-                </div>
-
-                <div class="address-component">
-                    <div class="address-avatar">{{TO_AVATAR}}</div>
-                    <div class="address-details">
-                        <div class="address-label">Recipient</div>
-                        {{#if TO_ENS}}
-                        <div class="address-ens">{{TO_ENS}}</div>
-                        {{/if}}
-                        <div class="address-value">{{TO_ADDRESS}}</div>
+        <div class="page-content">
+            <!-- ==================== PROVISIONAL WARNING (conditional) ==================== -->
+            {{#if STATUS_PROVISIONAL}}
+            <div class="alert-banner">
+                <div class="alert-icon">⚠️</div>
+                <div class="alert-content">
+                    <div class="alert-title">Provisional Transaction Status</div>
+                    <div class="alert-message">
+                        This transaction has {{CONFIRMATIONS}} confirmations. We recommend waiting for at least
+                        {{REQUIRED_CONFIRMATIONS}} confirmations before considering this transaction final. The data in
+                        this
+                        bill may change if a blockchain reorganization occurs.
                     </div>
                 </div>
             </div>
-        </section>
+            {{/if}}
 
-        <!-- ==================== TRANSACTION ITEMS ==================== -->
-        <section class="section">
-            <div class="section-header">
-                <h2 class="section-title">
-                    <span class="section-icon">💸</span>
-                    Token Movements
-                </h2>
-                <span class="section-action">{{ITEMS_COUNT}} items</span>
+            <!-- ==================== NETWORK BANNER ==================== -->
+            <div class="network-banner">
+                <div class="network-info">
+                    <div class="network-icon">{{CHAIN_ICON}}</div>
+                    <div class="network-details">
+                        <h3>{{CHAIN_NAME}} Network</h3>
+                        <p>Chain ID: {{CHAIN_ID}} • Native Token: {{CHAIN_SYMBOL}}</p>
+                    </div>
+                </div>
+                <div class="network-stats">
+                    <div class="network-stat">
+                        <div class="network-stat-label">Block Height</div>
+                        <div class="network-stat-value">{{BLOCK_NUMBER}}</div>
+                    </div>
+                    <div class="network-stat">
+                        <div class="network-stat-label">Confirmations</div>
+                        <div class="network-stat-value">{{CONFIRMATIONS}}</div>
+                    </div>
+                </div>
             </div>
 
-            <div class="table-wrapper">
-                <table class="table">
+            <!-- ==================== INTERNAL TRANSACTIONS ==================== -->
+            {{#if HAS_INTERNAL_TXS}}
+            <div class="section items-section" style="margin-top: 20px;">
+                <div class="section-header">
+                    <div class="section-title">
+                        <span class="section-icon">⚙️</span>
+                        <span>Internal Execution</span>
+                    </div>
+                    <div style="font-size: 10px; color: var(--gray-500); font-weight: 600;">
+                        Smart Contract Operations
+                    </div>
+                </div>
+
+                <table class="table" style="width: 100%;">
                     <thead>
                         <tr>
-                            <th>Direction</th>
-                            <th>Token</th>
-                            <th>From</th>
-                            <th>To</th>
-                            <th style="text-align: right;">Amount</th>
-                            <th style="text-align: right;">USD Value</th>
+                            <th style="width: 35%;">Sender</th>
+                            <th style="width: 35%;">Receiver</th>
+                            <th style="width: 30%; text-align: right;">Amount</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {{#each ITEMS}}
-                        <tr>
+                        {{#each INTERNAL_TXS}}
+                        <tr class="table-row">
                             <td>
-                                <span class="table-badge table-badge-{{this.direction}}">
-                                    {{#if this.isIn}}↓ IN{{else}}↑ OUT{{/if}}
-                                </span>
+                                <div class="table-mono">{{this.fromShort}}</div>
                             </td>
                             <td>
-                                <div class="table-cell-icon">
-                                    <span class="table-icon">{{this.tokenIcon}}</span>
-                                    <span>{{this.tokenSymbol}}</span>
-                                </div>
+                                <div class="table-mono">{{this.toShort}}</div>
                             </td>
-                            <td><span class="table-mono">{{this.fromShort}}</span></td>
-                            <td><span class="table-mono">{{this.toShort}}</span></td>
-                            <td style="text-align: right;">{{this.amountFormatted}}</td>
-                            <td style="text-align: right;" class="table-value-{{this.direction}}">
-                                {{this.usdValue}}
+                            <td style="text-align: right;">
+                                <span class="table-value-positive"
+                                    style="color: var(--gray-800);">{{this.amount}}</span>
+                                <span style="font-size: 9px; color: var(--gray-500);">{{this.symbol}}</span>
+                                {{#if this.isError}}
+                                <span class="table-badge table-badge-out" style="margin-left: 5px;">FAIL</span>
+                                {{/if}}
                             </td>
                         </tr>
                         {{/each}}
                     </tbody>
                 </table>
             </div>
-        </section>
+            {{/if}}
 
-        <!-- ==================== GAS FEES ==================== -->
-        <section class="section">
-            <div class="section-header">
-                <h2 class="section-title">
-                    <span class="section-icon">⛽</span>
-                    Transaction Fees
-                </h2>
-            </div>
-
-            <div class="summary-cards">
-                <div class="summary-card">
-                    <div class="summary-icon">🔥</div>
-                    <div class="summary-label">Gas Used</div>
-                    <div class="summary-value">{{GAS_USED}}</div>
-                    <div class="summary-subtext">units</div>
+            <!-- ==================== TRANSACTION OVERVIEW ==================== -->
+            <section class="section">
+                <div class="section-header">
+                    <h2 class="section-title">
+                        <span class="section-icon">📊</span>
+                        Transaction Overview
+                    </h2>
+                    <a href="{{EXPLORER_URL}}" class="section-action">View on Explorer →</a>
                 </div>
 
-                <div class="summary-card">
-                    <div class="summary-icon">💎</div>
-                    <div class="summary-label">Gas Price</div>
-                    <div class="summary-value">{{GAS_PRICE}}</div>
-                    <div class="summary-subtext">{{GAS_PRICE_GWEI}} Gwei</div>
-                </div>
-
-                <div class="summary-card summary-card-warning">
-                    <div class="summary-icon">💰</div>
-                    <div class="summary-label">Total Fee</div>
-                    <div class="summary-value">{{TOTAL_FEE}}</div>
-                    <div class="summary-subtext">${{TOTAL_FEE_USD}}</div>
-                </div>
-            </div>
-        </section>
-
-        <!-- ==================== FINANCIAL SUMMARY ==================== -->
-        <div class="totals-feature">
-            <div class="totals-header">
-                <h2 class="totals-title">📈 Historic Value</h2>
-            </div>
-
-            <div class="totals-grid">
-                <div class="total-item">
-                    <div class="total-icon">📥</div>
-                    <div class="total-label">Total Received</div>
-                    <div class="total-value">${{TOTAL_IN_USD}}</div>
-                    <div class="total-subvalue">{{TOKENS_IN_COUNT}} tokens</div>
-                </div>
-
-                <div class="total-item">
-                    <div class="total-icon">📤</div>
-                    <div class="total-label">Total Sent</div>
-                    <div class="total-value">${{TOTAL_OUT_USD}}</div>
-                    <div class="total-subvalue">{{TOKENS_OUT_COUNT}} tokens</div>
-                </div>
-
-
-            </div>
-
-
-        </div>
-
-        <!-- ==================== AUDIT & VERIFICATION ==================== -->
-        {{#if INCLUDE_AUDIT}}
-        <section class="audit-section">
-            <div class="audit-header">
-                <div class="audit-icon">🔍</div>
-                <div class="audit-title">
-                    <h3>Audit Trail & Verification</h3>
-                    <p>Data integrity and source verification</p>
-                </div>
-            </div>
-
-            <div class="audit-grid">
-                <div class="audit-item">
-                    <div class="info-label">Price Data Source</div>
-                    <div class="info-value">{{PRICE_SOURCE}}</div>
-                    <div class="info-subtext">Queried: {{PRICE_TIMESTAMP}}</div>
-                </div>
-
-                <div class="audit-item">
-                    <div class="info-label">RPC Provider</div>
-                    <div class="info-value">{{RPC_PROVIDER}}</div>
-                    <div class="info-subtext">{{RPC_ENDPOINT_SHORT}}</div>
-                </div>
-
-                <div class="audit-item">
-                    <div class="info-label">Classification Method</div>
-                    <div class="info-value">{{CLASSIFICATION_METHOD}}</div>
-                    <div class="info-subtext">AI-Powered Analysis</div>
-                </div>
-
-                <div class="audit-item">
-                    <div class="info-label">Reorg Detection</div>
-                    <div class="info-value">{{#if REORG_DETECTED}}⚠️ Detected{{else}}✓ Clear{{/if}}</div>
-                    <div class="info-subtext">Last checked: {{REORG_CHECK_TIME}}</div>
-                </div>
-            </div>
-
-            <div class="confidence-meter">
-                <div class="confidence-label">Classification Confidence Score</div>
-                <div class="confidence-bar-wrapper">
-                    <div class="confidence-bar-fill" data-width="{{CONFIDENCE_PERCENT}}%"></div>
-                </div>
-                <div class="confidence-value">{{CONFIDENCE}}% Confident</div>
-            </div>
-        </section>
-        {{/if}}
-
-        <!-- ==================== FOOTER GROUP (Keeps Ad, QR, Footer together) ==================== -->
-        <div class="footer-group">
-            <!-- ==================== AD SPACE ==================== -->
-            <section class="ad-section">
-                <div class="ad-title">📢 Sponsored Message</div>
-                {{#if hasAd}}
-                <div class="ad-content">
-                    {{{adContent}}}
-                </div>
-                {{else}}
-                <div class="ad-placeholder">
-                    <div class="ad-placeholder-title">📣 Advertise Here</div>
-                    <div class="ad-placeholder-text">
-                        Reach thousands of blockchain users with your message.<br>
-                        Contact us for premium ad placement opportunities.
+                <div class="info-grid">
+                    <div class="info-card info-card-highlight">
+                        <div class="info-label">
+                            <span class="info-label-icon">🔗</span>
+                            Transaction Hash
+                        </div>
+                        <div class="info-value info-value-mono">{{TRANSACTION_HASH}}</div>
+                        <div class="info-subtext">Unique blockchain identifier</div>
                     </div>
-                    <a href="mailto:ads@blockbill.io" class="ad-placeholder-link">Contact for Ads</a>
-                </div>
-                {{/if}}
-            </section>
 
-            <!-- ==================== QR CODE & VERIFICATION ==================== -->
-            <section class="verification-section">
-                <h3 class="verification-title">🔐 Blockchain Verification</h3>
-                <div class="qr-container">
-                    <div class="qr-code">
-                        <img src="{{QR_CODE_DATA_URL}}" alt="Transaction QR Code" />
+                    <div class="info-card">
+                        <div class="info-label">
+                            <span class="info-label-icon">📦</span>
+                            Block Number
+                        </div>
+                        <div class="info-value info-value-large">{{BLOCK_NUMBER}}</div>
+                        <div class="info-subtext">Block Hash: {{BLOCK_HASH_SHORT}}</div>
                     </div>
-                    <div class="qr-label">
-                        Scan to verify on blockchain explorer<br>
-                        <a href="{{EXPLORER_URL}}" class="qr-link">{{EXPLORER_URL}}</a>
+
+                    <div class="info-card">
+                        <div class="info-label">
+                            <span class="info-label-icon">🕐</span>
+                            Timestamp
+                        </div>
+                        <div class="info-value">{{TIMESTAMP}}</div>
+                        <div class="info-subtext">{{TIMESTAMP_RELATIVE}}</div>
+                    </div>
+
+                    <div class="info-card">
+                        <div class="info-label">
+                            <span class="info-label-icon">✓</span>
+                            Confirmations
+                        </div>
+                        <div class="info-value info-value-large">{{CONFIRMATIONS}}</div>
+                        <div class="info-subtext">Required: {{REQUIRED_CONFIRMATIONS}}</div>
                     </div>
                 </div>
             </section>
 
-            <!-- ==================== FOOTER ==================== -->
-            <footer class="footer">
-                <div class="footer-grid">
-                    <div class="footer-section">
-                        <h4>About This Bill</h4>
-                        <p>
-                            This transaction bill is generated from verified on-chain data sourced directly from the
-                            {{CHAIN_NAME}} blockchain. All information is cryptographically verifiable through the
-                            provided
-                            transaction hash and can be independently confirmed on any blockchain explorer.
-                        </p>
-                        <p>
-                            Bill ID: <span class="font-mono">{{BILL_ID}}</span><br>
-                            Generated: {{GENERATED_AT}}<br>
-                            Version: {{BILL_VERSION}}
-                        </p>
+            <!-- ==================== PARTICIPANTS ==================== -->
+            <section class="section">
+                <div class="section-header">
+                    <h2 class="section-title">
+                        <span class="section-icon">👥</span>
+                        Transaction Participants
+                    </h2>
+                </div>
+
+                <div class="info-grid">
+                    <div class="address-component">
+                        <div class="address-avatar">{{FROM_AVATAR}}</div>
+                        <div class="address-details">
+                            <div class="address-label">Sender</div>
+                            {{#if FROM_ENS}}
+                            <div class="address-ens">{{FROM_ENS}}</div>
+                            {{/if}}
+                            <div class="address-value">{{FROM_ADDRESS}}</div>
+                        </div>
                     </div>
 
-                    <div class="footer-section">
-                        <h4>Quick Links</h4>
-                        <p><a href="{{EXPLORER_URL}}" class="footer-link">View on Explorer</a></p>
-                        <p><a href="{{REGENERATE_URL}}" class="footer-link">Regenerate Bill</a></p>
-                        <p><a href="https://blockbill.io/support" class="footer-link">Get Support</a></p>
-                        <p><a href="https://blockbill.io/api" class="footer-link">API Documentation</a></p>
+                    <div class="address-component">
+                        <div class="address-avatar">{{TO_AVATAR}}</div>
+                        <div class="address-details">
+                            <div class="address-label">Recipient</div>
+                            {{#if TO_ENS}}
+                            <div class="address-ens">{{TO_ENS}}</div>
+                            {{/if}}
+                            <div class="address-value">{{TO_ADDRESS}}</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== TRANSACTION ITEMS ==================== -->
+            <section class="section">
+                <div class="section-header">
+                    <h2 class="section-title">
+                        <span class="section-icon">💸</span>
+                        Token Movements
+                    </h2>
+                    <span class="section-action">{{ITEMS_COUNT}} items</span>
+                </div>
+
+                <div class="table-wrapper">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Direction</th>
+                                <th>Token</th>
+                                <th>From</th>
+                                <th>To</th>
+                                <th style="text-align: right;">Amount</th>
+                                <th style="text-align: right;">USD Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{#each ITEMS}}
+                            <tr>
+                                <td>
+                                    <span class="table-badge table-badge-{{this.direction}}">
+                                        {{#if this.isIn}}↓ IN{{else}}↑ OUT{{/if}}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="table-cell-icon">
+                                        <span class="table-icon">{{this.tokenIcon}}</span>
+                                        <span>{{this.tokenSymbol}}</span>
+                                    </div>
+                                </td>
+                                <td><span class="table-mono">{{this.fromShort}}</span></td>
+                                <td><span class="table-mono">{{this.toShort}}</span></td>
+                                <td style="text-align: right;">{{this.amountFormatted}}</td>
+                                <td style="text-align: right;" class="table-value-{{this.direction}}">
+                                    {{this.usdValue}}
+                                </td>
+                            </tr>
+                            {{/each}}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- ==================== GAS FEES ==================== -->
+            <section class="section">
+                <div class="section-header">
+                    <h2 class="section-title">
+                        <span class="section-icon">⛽</span>
+                        Transaction Fees
+                    </h2>
+                </div>
+
+                <div class="summary-cards">
+                    <div class="summary-card">
+                        <div class="summary-icon">🔥</div>
+                        <div class="summary-label">Gas Used</div>
+                        <div class="summary-value">{{GAS_USED}}</div>
+                        <div class="summary-subtext">units</div>
                     </div>
 
-                    <div class="footer-section">
-                        <h4>Contact</h4>
-                        <p>Website: <a href="https://blockbill.io" class="footer-link">blockbill.io</a></p>
-                        <p>Email: support@blockbill.io</p>
-                        <p>Twitter: @blockbill</p>
-                        <p>Discord: /blockbill</p>
+                    <div class="summary-card">
+                        <div class="summary-icon">💎</div>
+                        <div class="summary-label">Gas Price</div>
+                        <div class="summary-value">{{GAS_PRICE}}</div>
+                        <div class="summary-subtext">{{GAS_PRICE_GWEI}} Gwei</div>
+                    </div>
+
+                    <div class="summary-card summary-card-warning">
+                        <div class="summary-icon">💰</div>
+                        <div class="summary-label">Total Fee</div>
+                        <div class="summary-value">{{TOTAL_FEE}}</div>
+                        <div class="summary-subtext">${{TOTAL_FEE_USD}}</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== FINANCIAL SUMMARY ==================== -->
+            <div class="totals-feature">
+                <div class="totals-header">
+                    <h2 class="totals-title">📈 Historic Value</h2>
+                </div>
+
+                <div class="totals-grid">
+                    <div class="total-item">
+                        <div class="total-icon">📥</div>
+                        <div class="total-label">Total Received</div>
+                        <div class="total-value">${{TOTAL_IN_USD}}</div>
+                        <div class="total-subvalue">{{TOKENS_IN_COUNT}} tokens</div>
+                    </div>
+
+                    <div class="total-item">
+                        <div class="total-icon">📤</div>
+                        <div class="total-label">Total Sent</div>
+                        <div class="total-value">${{TOTAL_OUT_USD}}</div>
+                        <div class="total-subvalue">{{TOKENS_OUT_COUNT}} tokens</div>
+                    </div>
+
+
+                </div>
+
+
+            </div>
+
+            <!-- ==================== AUDIT & VERIFICATION ==================== -->
+            {{#if INCLUDE_AUDIT}}
+            <section class="audit-section">
+                <div class="audit-header">
+                    <div class="audit-icon">🔍</div>
+                    <div class="audit-title">
+                        <h3>Audit Trail & Verification</h3>
+                        <p>Data integrity and source verification</p>
                     </div>
                 </div>
 
-                <div class="footer-bottom">
-                    <p class="font-bold">Generated by BlockBill - Professional Blockchain Transaction Intelligence</p>
-                    <div class="footer-legal">
-                        <p>
-                            This bill is provided for informational and accounting purposes only. While we strive for
-                            accuracy,
-                            BlockBill is not responsible for any decisions made based on this information. Always verify
-                            transaction
-                            data independently on blockchain explorers. USD values are estimates based on market data at
-                            the
-                            time
-                            of transaction and may not reflect actual trading prices. This document does not constitute
-                            financial,
-                            legal, or tax advice.
-                        </p>
-                        <p style="margin-top: 8px;">
-                            © 2024 BlockBill. All rights reserved. |
-                            <a href="https://blockbill.io/terms" class="footer-link">Terms of Service</a> |
-                            <a href="https://blockbill.io/privacy" class="footer-link">Privacy Policy</a>
-                        </p>
+                <div class="audit-grid">
+                    <div class="audit-item">
+                        <div class="info-label">Price Data Source</div>
+                        <div class="info-value">{{PRICE_SOURCE}}</div>
+                        <div class="info-subtext">Queried: {{PRICE_TIMESTAMP}}</div>
+                    </div>
+
+                    <div class="audit-item">
+                        <div class="info-label">RPC Provider</div>
+                        <div class="info-value">{{RPC_PROVIDER}}</div>
+                        <div class="info-subtext">{{RPC_ENDPOINT_SHORT}}</div>
+                    </div>
+
+                    <div class="audit-item">
+                        <div class="info-label">Classification Method</div>
+                        <div class="info-value">{{CLASSIFICATION_METHOD}}</div>
+                        <div class="info-subtext">AI-Powered Analysis</div>
+                    </div>
+
+                    <div class="audit-item">
+                        <div class="info-label">Reorg Detection</div>
+                        <div class="info-value">{{#if REORG_DETECTED}}⚠️ Detected{{else}}✓ Clear{{/if}}</div>
+                        <div class="info-subtext">Last checked: {{REORG_CHECK_TIME}}</div>
                     </div>
                 </div>
-            </footer>
+
+                <div class="confidence-meter">
+                    <div class="confidence-label">Classification Confidence Score</div>
+                    <div class="confidence-bar-wrapper">
+                        <div class="confidence-bar-fill" data-width="{{CONFIDENCE_PERCENT}}%"></div>
+                    </div>
+                    <div class="confidence-value">{{CONFIDENCE}}% Confident</div>
+                </div>
+            </section>
+            {{/if}}
+
+            <!-- ==================== FOOTER GROUP (Keeps Ad, QR, Footer together) ==================== -->
+            <div class="footer-group">
+                <!-- ==================== AD SPACE ==================== -->
+                <section class="ad-section">
+                    {{#if hasAd}}
+                    <div class="ad-content">
+                        {{{adContent}}}
+                    </div>
+                    {{else}}
+                    <div class="ad-placeholder">
+                        <div class="ad-placeholder-title">📣 Advertise Here</div>
+                        <div class="ad-placeholder-text">
+                            Reach thousands of blockchain users with your message.<br>
+                            Contact us for premium ad placement opportunities.
+                        </div>
+                        <a href="mailto:sarkaritoolmail@gmail.com" class="ad-placeholder-link">Contact for Ads</a>
+                    </div>
+                    {{/if}}
+                </section>
+
+                <!-- ==================== QR CODE & VERIFICATION ==================== -->
+                <section class="verification-section">
+                    <h3 class="verification-title">🔐 Blockchain Verification</h3>
+                    <div class="qr-container">
+                        <div class="qr-code">
+                            <img src="{{QR_CODE_DATA_URL}}" alt="Transaction QR Code" />
+                        </div>
+                        <div class="qr-label">
+                            Scan to verify on blockchain explorer<br>
+                            <a href="{{EXPLORER_URL}}" class="qr-link">{{EXPLORER_URL}}</a>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ==================== FOOTER ==================== -->
+                <footer class="footer">
+                    <div class="footer-grid">
+                        <div class="footer-section">
+                            <h4>About This Bill</h4>
+                            <p>
+                                This transaction bill is generated from verified on-chain data sourced directly from the
+                                {{CHAIN_NAME}} blockchain. All information is cryptographically verifiable through the
+                                provided
+                                transaction hash and can be independently confirmed on any blockchain explorer.
+                            </p>
+                            <p>
+                                Bill ID: <span class="font-mono">{{BILL_ID}}</span><br>
+                                Generated: {{GENERATED_AT}}<br>
+                                Version: {{BILL_VERSION}}
+                            </p>
+                        </div>
+
+                        <div class="footer-section">
+                            <h4>Quick Links</h4>
+                            <p><a href="{{EXPLORER_URL}}" class="footer-link">View on Explorer</a></p>
+                            <p><a href="{{REGENERATE_URL}}" class="footer-link">Regenerate Bill</a></p>
+                            <p><a href="https://blockbill.io/support" class="footer-link">Get Support</a></p>
+                            <p><a href="https://blockbill.io/api" class="footer-link">API Documentation</a></p>
+                        </div>
+
+                        <div class="footer-section">
+                            <h4>Contact</h4>
+                            <p>Website: <a href="https://blockbill.io" class="footer-link">blockbill.io</a></p>
+                            <p>Email: sarkaritoolmail@gmail.com</p>
+                            <p>Twitter: @loftyabhi</p>
+                            <p>Discord: /loftyabhi</p>
+                        </div>
+                    </div>
+
+                    <div class="footer-bottom">
+                        <p class="font-bold">Generated by Chain Receipt - Professional Blockchain Transaction
+                            Intelligence
+                        </p>
+                        <div class="footer-legal">
+                            <p>
+                                This bill is provided for informational and accounting purposes only. While we strive
+                                for
+                                accuracy,
+                                Chain Receipt is not responsible for any decisions made based on this information.
+                                Always
+                                verify
+                                transaction
+                                data independently on blockchain explorers. USD values are estimates based on market
+                                data at
+                                the
+                                time
+                                of transaction and may not reflect actual trading prices. This document does not
+                                constitute
+                                financial,
+                                legal, or tax advice.
+                            </p>
+                            <p style="margin-top: 8px;">
+                                © 2025 Chain Receipt. All rights reserved. |
+                                <a href="#" class="footer-link">Terms of Service</a> |
+                                <a href="#" class="footer-link">Privacy Policy</a>
+                            </p>
+                        </div>
+                    </div>
+                </footer>
+            </div>
         </div>
-    </div>
-    <script>
-        // Apply dynamic widths that might cause CSS validation errors if inline
-        document.querySelectorAll('[data-width]').forEach(el => {
-            el.style.width = el.getAttribute('data-width');
-        });
-    </script>
+        <script>
+            // Apply dynamic widths that might cause CSS validation errors if inline
+            document.querySelectorAll('[data-width]').forEach(el => {
+                el.style.width = el.getAttribute('data-width');
+            });
+        </script>
 </body>
 
 </html>

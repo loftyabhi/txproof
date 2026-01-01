@@ -14,7 +14,7 @@ export class AuthService {
      * Verify a wallet signature and issue a JWT if the signer is an admin.
      * @param address The wallet address claiming to be admin.
      * @param signature The signature produced by the wallet.
-     * @param nonce The nonce that was signed (e.g., "Login to GChain Bill Generator at 1234567890").
+     * @param nonce The nonce that was signed (e.g., "Login to Chain Receipt at 1234567890").
      */
     async loginAdmin(address: string, signature: string, nonce: string): Promise<AuthResponse> {
         if (!this.adminAddress) {
@@ -49,7 +49,7 @@ export class AuthService {
      * Generate a random nonce message for the user to sign.
      */
     generateNonce(): string {
-        return `Sign this message to login to GChain Receipt Manager.\nNonce: ${Date.now()}-${Math.random().toString(36).substring(7)}`;
+        return `Sign this message to login to Chain Receipt Manager.\nNonce: ${Date.now()}-${Math.random().toString(36).substring(7)}`;
     }
 
     /**

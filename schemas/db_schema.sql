@@ -1,4 +1,4 @@
--- Database Schema for GChain Receipt
+-- Database Schema for Chain Receipt
 
 CREATE TABLE IF NOT EXISTS chains (
     id SERIAL PRIMARY KEY,

@@ -1,6 +1,6 @@
 openapi: 3.0.0
 info:
-  title: GChain Bill Generator API
+  title: Chain Receipt API
   version: 1.0.0
   description: API for resolving blockchain transactions into bills and managing user plans.
 servers:
