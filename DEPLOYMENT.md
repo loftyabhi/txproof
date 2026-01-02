@@ -1,73 +1,66 @@
 # Deployment & Infrastructure Guide
 
-This guide outlines the infrastructure requirements and steps to deploy the Chain Receipt system, including the Blockchain components, Backend API, and Frontend application.
+This guide outlines the infrastructure requirements and steps to deploy the Chain Receipt system in its Monorepo configuration.
 
-## 1. Blockchain Components (Base Network)
+## 1. Frontend (Vercel)
 
--   **Target Network**: Base Mainnet (Chain ID: 8453)
--   **Infrastructure Needed**:
-    -   **Deployer Wallet**: Secure wallet (Ledger/Trezor recommended) with ETH on Base for gas.
-    -   **RPC Provider**: Alchemy, Infura, or QuickNode (Base Mainnet URL).
-    -   **Etherscan/Basescan API Key**: For verifying contract source code.
--   **Deployment**:
-    -   Contract: `RegistryManager`
-    -   Location: On-Chain (Base). The deployed address must be configured in both Frontend and Backend environments.
+The frontend is a Next.js application located in `apps/web`.
 
-## 2. Backend Infrastructure (Node.js/Express)
-
--   **Recommended Platforms**: Railway, Render, or AWS ECS.
--   **Architecture**:
-    -   **API Service**: Main Node.js/Express application.
-    -   **Worker Service**: Separate process for BullMQ (PDF generation/Parsing) to prevent blocking the main API.
+-   **Platform**: Vercel
+-   **Framework Preset**: Next.js
+-   **Root Directory**: `apps/web`
+    -   *Critical*: You MUST set the Root Directory in Vercel settings so it ignores the backend.
+-   **Build Command**: `npm run build`
+    -   (Vercel will automatically detect `cd ../.. && npm install` logic for monorepos).
 -   **Environment Variables**:
-    Create a `.env` file (or configure platform secrets) with the following:
     ```ini
+    NEXT_PUBLIC_API_URL=https://your-api.onrender.com
+    NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID=...
+    ```
+
+## 2. Backend (Render / Railway)
+
+The backend is a Node.js/Express application located in `apps/api`.
+
+-   **Platform**: Render (Web Service)
+-   **Runtime**: Node
+-   **Root Directory**: `.` (Repository Root)
+    -   *Reason*: Render needs to see the root `package.json` to install workspace dependencies (`packages/*`).
+-   **Build Command**:
+    ```bash
+    npm install && npm run build -w apps/api
+    ```
+-   **Start Command**:
+    ```bash
+    npm start -w apps/api
+    ```
+-   **Environment Variables** (Add to Render Dashboard):
+    ```ini
+    NODE_ENV=production
     PORT=3000
-    ADMIN_ADDRESS=0x...          # Admin Wallet Address
-    JWT_SECRET=...               # Secure random string
-    PRIVATE_KEY=...              # Wallet Private Key (for transactions/signing)
-    RPC_URL_BASE=...             # Base Mainnet RPC URL
-    DATABASE_URL=...             # PostgreSQL Connection String
-    REDIS_URL=...                # Redis Connection String
-    S3_ACCESS_KEY=...            # For PDF Storage
-    S3_SECRET_KEY=...
-    S3_BUCKET_NAME=...
-    ALCHEMY_API_KEY=...          # Critical for Base Internal Txs & Pricing
-    ETHERSCAN_API_KEY=...        # Fallback for Internal Txs
+    DATABASE_URL=...
+    REDIS_URL=...
+    ALCHEMY_API_KEY=...
+    PRIVATE_KEY=...
     ```
 
-## 3. Database & Caching
+## 3. Database (Supabase)
 
--   **PostgreSQL**:
-    -   **Usage**: Application data, user records, transaction logs.
-    -   **Hosting**: Supabase, Neon, AWS RDS, or Railway Plugin.
--   **Redis**:
-    -   **Usage**: BullMQ Job Queue, Rate Limiting, Price Caching.
-    -   **Hosting**: Upstash, Railway, or AWS ElastiCache.
+-   **Schema Management**:
+    -   Migrations are located in `packages/database/migrations`.
+    -   Apply using Supabase CLI or copy SQL from `packages/database/migrations/schema.sql`.
 
-## 4. Frontend Application (Next.js)
+## 4. Smart Contracts (Base Network)
 
--   **Recommended Platforms**: Vercel (Optimized for Next.js), Netlify, or AWS Amplify.
--   **Build Settings**:
-    -   Framework Preset: Next.js
-    -   Build Command: `npm run build`
-    -   Output Directory: `.next`
--   **Environment Variables**:
-    ```ini
-    NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID=... # From WalletConnect Cloud
-    NEXT_PUBLIC_CONTRACT_ADDRESS=...          # Deployed RegistryManager Address
-    NEXT_PUBLIC_API_URL=...                   # URL of your deployed Backend
+-   **Location**: `packages/contracts`
+-   **Deploy**:
+    ```bash
+    cd packages/contracts
+    npx hardhat run scripts/deploy.ts --network base
     ```
+-   **Update**: After deployment, update `packages/contracts/src/index.ts` with the new address and ABI.
 
-## 5. Storage (Artifacts)
+## 5. Security Notes
 
--   **Object Storage**: AWS S3, Cloudflare R2, or DigitalOcean Spaces.
--   **Purpose**: Storing generated PDF receipts.
--   **Configuration**:
-    -   Bucket should be private.
-    -   Enable signed URL generation for secure access.
-
-## 6. External Services
-
--   **CoinGecko / DeFiLlama**: For fetching historical token prices.
--   **WalletConnect**: Required for RainbowKit/Wagmi wallet connections.
+-   **PDF Generation**: The API generates PDFs to `apps/api/public/bills`. Ensure your deployment platform supports ephemeral disk or configure S3 (Recommended for production).
+-   **Secrets**: Never add `.env` files to `packages/*`. All secrets must be injected at the App level (`apps/web` or `apps/api`).

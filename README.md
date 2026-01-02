@@ -1,45 +1,35 @@
-# Chain Receipt System
+# Chain Receipt System (Enterprise Monorepo)
 
 > A production-ready system to convert blockchain transactions into professional, audit-ready PDF receipts.
 
-Chain Receipt is a full-stack application designed to generate detailed financial receipts for blockchain transactions on the Base network. It bridges the gap between on-chain data and traditional accounting requirements.
+Chain Receipt is a full-stack application designed to generate detailed financial receipts for blockchain transactions. It is architected as a **Secure Monorepo** with strict isolation between the frontend, backend, and smart contracts.
 
-## 🌟 Features
+## 🌟 Key Features
 
 -   **Automated Receipt Generation**: Converts transaction hashes into downloadable PDF receipts.
--   **Smart Contract Integration**: Interacts with the `RegistryManager` on Base Mainnet.
--   **Internal Transactions**: Displays detailed smart contract execution transfers (ETH/Native) using Alchemy/Etherscan/Blockscout.
--   **Historical Pricing**: Fetches historical token prices using CoinGecko/DeFiLlama/Alchemy at the time of transaction.
--   **Enterprise-Grade PDF**: High-quality, printable PDF layout using Puppeteer.
--   **Admin Dashboard**: Manage subscription plans and ad profiles.
--   **Wallet Authentication**: Secure login using RainbowKit and Wagmi (SIWE).
+-   **Enterprise Security**: Strict physical separation of frontend and backend runtimes.
+-   **Internal Transactions**: Detailed tracking of smart contract executions.
+-   **Historical Pricing**: Accurate point-in-time valuation.
+-   **Smart Layouts**: High-quality, printable PDF layout using Puppeteer.
 
-## 🏗️ Tech Stack
+## 🏗️ Architecture
 
-### Frontend (`/client`)
--   **Framework**: [Next.js 16](https://nextjs.org/) (App Router)
--   **Language**: TypeScript
--   **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
--   **Web3 Integration**:
-    -   [RainbowKit](https://www.rainbowkit.com/)
-    -   [Wagmi](https://wagmi.sh/)
-    -   [Viem](https://viem.sh/)
--   **State Management**: React Query (TanStack Query)
--   **Icons**: Lucide React
+This project uses a Workspace-based Monorepo structure:
 
-### Backend (`/`)
--   **Runtime**: Node.js
--   **Framework**: Express.js
--   **Language**: TypeScript
--   **Blockchain Interaction**: Ethers.js v6
--   **Job Queue**: BullMQ & Redis
--   **PDF Generation**: Puppeteer & Handlebars
--   **Database**: PostgreSQL (via Supabase/Neon recommended)
-
-### Smart Contracts (`/contracts`)
--   **Network**: Base (Ethereum L2)
--   **Framework**: Hardhat
--   **Library**: OpenZeppelin
+```text
+/
+├── apps/
+│   ├── web/                # [Next.js] Frontend (Vercel)
+│   └── api/                # [Node.js] Backend (Render)
+│
+├── packages/
+│   ├── domain/             # Shared Types & Schemas (Zero Runtime)
+│   ├── contracts/          # Smart Contracts & Canonical ABIs
+│   ├── database/           # Supabase Schema & Migrations
+│   └── config/             # Shared Environment Constants
+│
+└── tools/                  # Deployment & Verification Scripts
+```
 
 ## 🚀 Quick Start
 
@@ -50,76 +40,40 @@ Chain Receipt is a full-stack application designed to generate detailed financia
 
 ### Installation
 
-1.  **Clone the repository**:
+1.  **Clone and Install**:
     ```bash
     git clone <repository-url>
     cd chain-receipt
+    npm install  # Installs all workspace dependencies
     ```
 
-2.  **Install Dependencies**:
-    ```bash
-    # Install root/backend dependencies
-    npm install
-
-    # Install frontend dependencies
-    cd client
-    npm install
-    cd ..
-    ```
-
-3.  **Configuration**:
-    Create a `.env` file in the root directory:
-    ```ini
-    PORT=3000
-    ADMIN_ADDRESS=0xYourAdminAddress
-    JWT_SECRET=your_super_secret_key
-    RPC_URL_BASE=https://mainnet.base.org
-    DATABASE_URL=postgresql://user:pass@localhost:5432/db
-    REDIS_URL=redis://localhost:6379
-    ALCHEMY_API_KEY=your_alchemy_key  # Required for Internal Txs on Base
-    ETHERSCAN_API_KEY=your_etherscan_key # Fallback for other chains
-    ```
-
-    Create a `.env.local` in the `client` directory:
-    ```ini
-    NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID=your_id
-    NEXT_PUBLIC_CONTRACT_ADDRESS=your_contract_address
-    NEXT_PUBLIC_API_URL=http://localhost:3000
-    ```
+2.  **Configuration**:
+    -   **Backend**: Create `apps/api/.env` (See `apps/api/.env.example` or DEPLOYMENT.md).
+    -   **Frontend**: Create `apps/web/.env.local`.
 
 ### Development
 
-To start both the Backend and Frontend concurrently:
+To start the entire system (Frontend + Backend + Watchers):
 
 ```bash
-npm run dev:all
+npm run dev
 ```
 
--   **Frontend**: [http://localhost:3001](http://localhost:3001)
--   **Backend**: [http://localhost:3000](http://localhost:3000)
--   **Admin Dashboard**: [http://localhost:3001/dashboard](http://localhost:3001/dashboard)
+Or run individual workspaces:
 
-## 📂 Project Structure
+```bash
+# Frontend only (localhost:3000)
+npm run dev -w apps/web
 
-```
-├── client/                 # Next.js Frontend
-│   ├── app/                # App Router Pages
-│   ├── components/         # React Components
-│   └── ...
-├── contracts/              # Hardhat Smart Contracts
-├── src/                    # Backend Source Code
-│   ├── controllers/        # API Controllers
-│   ├── services/           # Business Logic (BillService, PriceOracle, etc.)
-│   └── index.ts            # Entry Point
-├── templates/              # HTML/Handlebars Templates for PDFs
-├── scripts/                # Utility Scripts
-└── ...
+# Backend only (localhost:3001)
+npm run dev -w apps/api
 ```
 
 ## 📖 Documentation
 
--   [Deployment Guide](DEPLOYMENT.md): Detailed infrastructure and deployment instructions.
--   [Contributing](CONTRIBUTING.md): Guidelines for contributing to the project.
+-   [Deployment Guide](DEPLOYMENT.md): Instructions for Vercel and Render.
+-   [Contributing](CONTRIBUTING.md): Guidelines for developing in the monorepo.
+-   [Security Audit](security_audit.md): Details on the security architecture.
 
 ## 📄 License
 

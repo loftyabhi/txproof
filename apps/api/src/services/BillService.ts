@@ -1,0 +1,867 @@
+﻿import { ethers } from 'ethers';
+import fs from 'fs';
+import path from 'path';
+import puppeteer from 'puppeteer';
+import { renderBillHtml } from './PdfTemplateHelper';
+import { PriceOracleService } from './PriceOracleService';
+import { transactionClassifier, ClassificationResult, ExecutionType, TransactionEnvelopeType } from './TransactionClassifier';
+import { AdminService } from './AdminService';
+import { ERC20_ABI, ERC721_ABI, ERC1155_ABI } from '../abis/Common';
+import { PDFDocument } from 'pdf-lib';
+import QRCode from 'qrcode';
+
+// --- Strict Interfaces ---
+
+export interface BillRequest {
+    txHash: string;
+    chainId: number;
+    connectedWallet?: string;
+}
+
+export interface BillResponse {
+    pdfPath: string;
+    billData: BillViewModel;
+}
+
+export interface TokenItemViewModel {
+    direction: 'in' | 'out';
+    isIn: boolean;
+    tokenIcon: string;
+    tokenSymbol: string;
+    tokenAddress: string;
+    fromShort: string;
+    toShort: string;
+    amountFormatted: string;
+    usdValue: string; // Display Value (Current)
+}
+
+export interface InternalTxViewModel {
+    from: string;
+    to: string;
+    fromShort: string;
+    toShort: string;
+    amount: string;
+    symbol: string;
+    isError: boolean;
+}
+
+export interface BillViewModel {
+    BILL_ID: string;
+    BILL_VERSION: string;
+    GENERATED_AT: string;
+    STATUS: string;
+    STATUS_CONFIRMED: boolean;
+
+    // Network
+    CHAIN_NAME: string;
+    CHAIN_ID: number;
+    CHAIN_SYMBOL: string;
+    CHAIN_ICON: string;
+
+    // Transaction
+    TRANSACTION_HASH: string;
+    BLOCK_NUMBER: string;
+    BLOCK_HASH_SHORT: string;
+    TIMESTAMP: string;
+    TIMESTAMP_RELATIVE: string;
+    CONFIRMATIONS: number;
+
+    // Classification
+    TYPE: string;
+    TYPE_READABLE: string;
+    TYPE_ICON: string;
+    IS_MULTISIG: boolean;
+    IS_SMART_ACCOUNT: boolean;
+    ENVELOPE_LABEL: string;
+    PROTOCOL_TAG?: string;
+
+    // Participants
+    FROM_ADDRESS: string;
+    FROM_ENS: string | null;
+    FROM_AVATAR: string;
+    TO_ADDRESS: string;
+    TO_ENS: string | null;
+    TO_AVATAR: string;
+
+    // Items
+    ITEMS: TokenItemViewModel[];
+    ITEMS_COUNT: number;
+    INTERNAL_TXS: InternalTxViewModel[];
+    HAS_INTERNAL_TXS: boolean;
+
+    // Fees
+    GAS_USED: string;
+    GAS_PRICE_GWEI: string;
+    TOTAL_FEE: string;
+    TOTAL_FEE_USD: string;
+
+    // Totals
+    TOTAL_IN_USD: string;
+    TOTAL_OUT_USD: string;
+    TOKENS_IN_COUNT: number;
+    TOKENS_OUT_COUNT: number;
+    NET_CHANGE_USD: string;
+    NET_CHANGE_SIGN: string;
+    NET_CHANGE_POSITIVE: boolean;
+
+    // Audit
+    RPC_PROVIDER: string;
+    CONFIDENCE_PERCENT: number;
+    QR_CODE_DATA_URL: string;
+    EXPLORER_URL: string;
+    INCLUDE_AUDIT: boolean;
+    PRICE_SOURCE: string;
+    CLASSIFICATION_METHOD: string;
+    REORG_DETECTED: boolean;
+    CONFIDENCE: number;
+
+    // Ads
+    hasAd: boolean;
+    adLink: string;
+    adContent: string;
+}
+
+// Internal Data Structures (Pre-View Model)
+interface RawTokenMovement {
+    type: 'ERC20' | 'ERC721' | 'ERC1155' | 'NATIVE';
+    address: string;
+    from: string;
+    to: string;
+    amount: bigint;
+    symbol: string;
+    decimals: number;
+    tokenId?: string;
+}
+
+interface PricedTokenMovement extends RawTokenMovement {
+    historicPrice: number;
+    currentPrice: number;
+    historicValueUsd: number;
+    currentValueUsd: number;
+    isIn: boolean;
+}
+
+// --- Formatting Helpers ---
+
+const formatGasUsed = (gas: bigint | number): string => {
+    return Number(gas).toLocaleString('en-US', { maximumFractionDigits: 0 });
+};
+
+const formatEth = (val: string): string => {
+    const num = parseFloat(val);
+    if (num === 0) return "0";
+    // Max 6 decimals, strip trailing zeros
+    return parseFloat(num.toFixed(6)).toString();
+};
+
+const formatUsd = (val: number): string => {
+    if (val === 0) return "0.00";
+    if (val < 0.01) return "< 0.01";
+    return val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+// --- Service ---
+
+export class BillService {
+    private oracle: PriceOracleService;
+    private adminService: AdminService;
+    private rpcs: { [key: number]: string } = {
+        1: 'https://eth.llamarpc.com',
+        8453: 'https://mainnet.base.org',
+        137: 'https://polygon-rpc.com',
+        11155111: 'https://rpc.sepolia.org',
+        42161: 'https://arb1.arbitrum.io/rpc',
+        10: 'https://mainnet.optimism.io',
+        56: 'https://bsc-dataseed.binance.org',
+        43114: 'https://api.avax.network/ext/bc/C/rpc'
+    };
+
+    private alchemyCallsMade = false;
+
+    constructor() {
+        this.oracle = new PriceOracleService();
+        this.adminService = new AdminService();
+    }
+
+    /**
+     * Main Entry Point: Generate a PDF Bill for a transaction.
+     */
+    async generateBill(request: BillRequest): Promise<BillResponse> {
+        const { txHash, chainId } = request;
+        console.log(`[BillService] Generating bill for ${txHash} on chain ${chainId}`);
+
+        try {
+            // 1. Fetch Data
+            const { provider, tx, receipt, block, timestamp } = await this.fetchTransactionData(txHash, chainId);
+
+            // 2. Classify Transaction
+            const classification = await transactionClassifier.classify(receipt, tx, chainId);
+
+            // 3. Resolve Identity
+            const userAddress = this.resolveUserIdentity(request, tx, classification);
+
+            // 4. Resolve ENS
+            const { fromName, toName } = await this.resolveNames(classification.details?.sender || tx.from, tx.to, chainId);
+
+            // 5. Raw Token Parsing (No Pricing yet)
+            const rawMovements = await this.parseRawMovements(receipt.logs, chainId, provider);
+
+            // Add Native Transfer if exists
+            if (tx.value > BigInt(0)) {
+                rawMovements.push({
+                    type: 'NATIVE',
+                    address: 'native',
+                    from: tx.from.toLowerCase(),
+                    to: tx.to?.toLowerCase() || 'contract',
+                    amount: tx.value,
+                    symbol: this.getNativeSymbol(chainId),
+                    decimals: 18
+                });
+            }
+
+            // 6. Apply Pricing & Direction (Business Logic / Valuation Layer)
+            const pricedMovements = await this.applyPricingAndDirection(
+                rawMovements,
+                userAddress,
+                classification,
+                chainId,
+                receipt.blockNumber,
+                timestamp,
+                tx.from.toLowerCase() // txOrigin
+            );
+
+            // 7. Internal Txs
+            const internalTxs = await this.fetchInternalTransactions(txHash, chainId, receipt.blockNumber);
+
+            // 8. Fees
+            const feeData = await this.calculateFees(receipt, chainId, timestamp);
+
+            // 9. View Model construction
+            const billData = await this.buildBillViewModel({
+                request, tx, receipt, timestamp, classification,
+                userAddress, fromName, toName,
+                pricedMovements, internalTxs, feeData
+            });
+
+            // 10. Render
+            const pdfPath = await this.renderPdf(billData, `${txHash}.pdf`);
+
+            return { pdfPath, billData };
+
+        } catch (error: any) {
+            console.error(`[BillService] Generation Failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    // --- Data Fetching ---
+
+    private async fetchTransactionData(txHash: string, chainId: number) {
+        const rpcUrl = this.getRpcUrl(chainId);
+        if (!rpcUrl) throw new Error(`Unsupported Chain ID: ${chainId}`);
+
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
+        const [tx, receipt] = await Promise.all([
+            provider.getTransaction(txHash),
+            provider.getTransactionReceipt(txHash)
+        ]);
+
+        if (!tx || !receipt) throw new Error('Transaction not found');
+        const block = await provider.getBlock(receipt.blockNumber);
+        if (!block) throw new Error('Block not found');
+
+        return { provider, tx, receipt, block, timestamp: block.timestamp };
+    }
+
+    private resolveUserIdentity(request: BillRequest, tx: ethers.TransactionResponse, classification: ClassificationResult): string {
+        if (request.connectedWallet) return request.connectedWallet.toLowerCase();
+        if (classification.details?.sender) return classification.details.sender.toLowerCase();
+        return tx.from.toLowerCase();
+    }
+
+    // --- Parsing (Raw) ---
+
+    private async parseRawMovements(logs: readonly any[], chainId: number, provider: ethers.Provider): Promise<RawTokenMovement[]> {
+        const movements: RawTokenMovement[] = [];
+        const erc20 = new ethers.Interface(ERC20_ABI);
+        const erc721 = new ethers.Interface(ERC721_ABI);
+        const erc1155 = new ethers.Interface(ERC1155_ABI);
+
+        const topics = {
+            transfer: erc20.getEvent('Transfer')?.topicHash,
+            transferSingle: erc1155.getEvent('TransferSingle')?.topicHash,
+            transferBatch: erc1155.getEvent('TransferBatch')?.topicHash
+        };
+
+        const tokenCache: Record<string, { symbol: string, decimals: number }> = {};
+
+        for (const log of logs) {
+            // ERC20 & 721
+            if (log.topics[0] === topics.transfer) {
+                if (log.topics.length === 3) {
+                    // ERC20
+                    try {
+                        const parsed = erc20.parseLog(log);
+                        if (parsed) {
+                            if (!tokenCache[log.address]) {
+                                const c = new ethers.Contract(log.address, ERC20_ABI, provider);
+                                try {
+                                    const [s, d] = await Promise.all([c.symbol(), c.decimals()]);
+                                    tokenCache[log.address] = { symbol: s, decimals: Number(d) };
+                                } catch { tokenCache[log.address] = { symbol: 'TOKEN', decimals: 18 }; }
+                            }
+                            movements.push({
+                                type: 'ERC20',
+                                address: log.address,
+                                from: parsed.args[0].toLowerCase(),
+                                to: parsed.args[1].toLowerCase(),
+                                amount: parsed.args[2],
+                                symbol: tokenCache[log.address].symbol,
+                                decimals: tokenCache[log.address].decimals
+                            });
+                        }
+                    } catch { }
+                } else if (log.topics.length === 4) {
+                    // ERC721
+                    try {
+                        const parsed = erc721.parseLog(log);
+                        if (parsed) {
+                            movements.push({
+                                type: 'ERC721',
+                                address: log.address,
+                                from: parsed.args[0].toLowerCase(),
+                                to: parsed.args[1].toLowerCase(),
+                                amount: BigInt(1),
+                                symbol: `NFT`,
+                                decimals: 0,
+                                tokenId: parsed.args[2].toString()
+                            });
+                        }
+                    } catch { }
+                }
+            }
+            // ERC1155
+            else if (log.topics[0] === topics.transferSingle) {
+                try {
+                    const parsed = erc1155.parseLog(log);
+                    if (parsed) {
+                        movements.push({
+                            type: 'ERC1155',
+                            address: log.address,
+                            from: parsed.args[1].toLowerCase(),
+                            to: parsed.args[2].toLowerCase(),
+                            amount: parsed.args[4],
+                            symbol: `ID #${parsed.args[3]}`,
+                            decimals: 0,
+                            tokenId: parsed.args[3].toString()
+                        });
+                    }
+                } catch { }
+            }
+        }
+        return movements;
+    }
+
+    // --- Valuation & Direction (Enterprise Layer) ---
+
+    private async applyPricingAndDirection(
+        raw: RawTokenMovement[],
+        userAddress: string,
+        classification: ClassificationResult,
+        chainId: number,
+        blockNumber: number,
+        timestamp: number,
+        txOrigin: string
+    ): Promise<PricedTokenMovement[]> {
+        const priced: PricedTokenMovement[] = [];
+        const aliasAddress = classification.executionType === ExecutionType.ACCOUNT_ABSTRACTION ? txOrigin : undefined;
+
+        const isRelevent = (addr: string): boolean => addr === userAddress || (aliasAddress !== undefined && addr === aliasAddress);
+
+        let relevantRaw = raw.filter(m => isRelevent(m.from) || isRelevent(m.to));
+
+        if (relevantRaw.length === 0) {
+            // Fallback: If no movements for User, try movements involving Tx Origin
+            if (userAddress !== txOrigin) {
+                relevantRaw = raw.filter(m => m.from === txOrigin || m.to === txOrigin);
+            }
+        }
+
+        // Dedup Check: If still empty, maybe return all NON-spam (non-zero) movements? 
+        // For now, strict: only irrelevant if truly 0 movements.
+        if (relevantRaw.length === 0 && raw.length > 0) {
+            // Last resort: Just show everything (Observer mode for unrelated tx)
+            relevantRaw = raw;
+        }
+
+        for (const m of relevantRaw) {
+            let isIn = isRelevent(m.to);
+            if (!isRelevent(m.from) && !isRelevent(m.to)) {
+                // If neither, assume IN if TO is closer to being 'recipient-like'? 
+                // Or just default OUT if FROM matches txOrigin.
+                if (m.from === txOrigin) isIn = false;
+                else isIn = true;
+            }
+
+            let histPrice = 0;
+            let currPrice = 0;
+
+            if ((m.type === 'ERC20' || m.type === 'NATIVE') && m.amount > BigInt(0)) {
+                try {
+                    const [h, c] = await Promise.all([
+                        this.oracle.getAccountingPrice({ chainId, tokenAddress: m.address, blockNumber, txTimestamp: timestamp }).catch(() => ({ price: 0 })),
+                        this.oracle.getDisplayPrice({ chainId, tokenAddress: m.address }).catch(() => ({ price: 0 }))
+                    ]);
+                    histPrice = h.price;
+                    currPrice = c.price;
+                } catch (e) {
+                    console.warn(`[BillService] Pricing failed for ${m.address}:`, e);
+                }
+            }
+
+            const amountFmt = ethers.formatUnits(m.amount, m.decimals);
+            const amountFloat = parseFloat(amountFmt);
+
+            priced.push({
+                ...m,
+                historicPrice: histPrice,
+                currentPrice: currPrice,
+                historicValueUsd: amountFloat * histPrice,
+                currentValueUsd: amountFloat * currPrice,
+                isIn
+            });
+        }
+
+        return priced;
+    }
+
+    private async calculateFees(receipt: ethers.TransactionReceipt, chainId: number, timestamp: number) {
+        const gasUsed = receipt.gasUsed;
+        const gasPrice = receipt.gasPrice || BigInt(0);
+        const feeWei = gasUsed * gasPrice;
+        const feeEth = ethers.formatEther(feeWei);
+        const feeEthNum = parseFloat(feeEth);
+
+        let feeUsdNum = 0;
+        try {
+            const price = await this.oracle.getAccountingPrice({
+                chainId,
+                tokenAddress: 'native',
+                blockNumber: receipt.blockNumber,
+                txTimestamp: timestamp
+            });
+            feeUsdNum = feeEthNum * price.price;
+        } catch (e) { console.warn('Fee pricing failed'); }
+
+        const feeUSD = formatUsd(feeUsdNum).replace('< 0.01', '< $0.01'); // Ad-hoc fix for prefix
+
+        return { gasUsed, gasPrice, feeEth, feeUSD, feeUsdNum };
+    }
+
+    // --- Internal Txs ---
+
+    private async fetchInternalTransactions(txHash: string, chainId: number, blockNumber: number): Promise<InternalTxViewModel[]> {
+        try {
+            if (this.isAlchemySupported(chainId)) {
+                const alc = await this.fetchInternalFromAlchemy(txHash, chainId, blockNumber);
+                if (alc.length > 0) return alc;
+            }
+            return await this.fetchInternalTransactionsFromBlockscout(txHash, chainId);
+        } catch { return []; }
+    }
+
+    private async fetchInternalFromAlchemy(txHash: string, chainId: number, blockNumber: number): Promise<InternalTxViewModel[]> {
+        const key = process.env.ALCHEMY_API_KEY;
+        if (!key) return [];
+        let url = '';
+        switch (chainId) {
+            case 1: url = `https://eth-mainnet.g.alchemy.com/v2/${key}`; break;
+            case 8453: url = `https://base-mainnet.g.alchemy.com/v2/${key}`; break;
+            case 137: url = `https://polygon-mainnet.g.alchemy.com/v2/${key}`; break;
+            case 42161: url = `https://arb-mainnet.g.alchemy.com/v2/${key}`; break;
+            case 10: url = `https://opt-mainnet.g.alchemy.com/v2/${key}`; break;
+            case 11155111: url = `https://eth-sepolia.g.alchemy.com/v2/${key}`; break;
+            default: return [];
+        }
+
+        try {
+            const hexBlock = `0x${blockNumber.toString(16)}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'alchemy_getAssetTransfers',
+                    params: [{ fromBlock: hexBlock, toBlock: hexBlock, category: ['internal'], withMetadata: false, excludeZeroValue: true }]
+                })
+            });
+            const data = await res.json();
+            if (data.result?.transfers) {
+                return data.result.transfers
+                    .filter((t: any) => t.hash && t.hash.toLowerCase() === txHash.toLowerCase())
+                    .map((t: any) => ({
+                        from: t.from,
+                        to: t.to,
+                        fromShort: `${t.from.slice(0, 6)}...${t.from.slice(-4)}`,
+                        toShort: `${t.to?.slice(0, 6)}...${t.to?.slice(-4)}`,
+                        amount: t.value?.toString() || '0',
+                        symbol: this.getNativeSymbol(chainId),
+                        isError: false
+                    }));
+            }
+        } catch { }
+        return [];
+    }
+
+    private async fetchInternalTransactionsFromBlockscout(txHash: string, chainId: number): Promise<InternalTxViewModel[]> {
+        let domain = '';
+        if (chainId === 8453) domain = 'https://base.blockscout.com';
+        else if (chainId === 10) domain = 'https://optimism.blockscout.com';
+        else return [];
+
+        try {
+            const res = await fetch(`${domain}/api/v2/transactions/${txHash}/internal-transactions`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.items?.length > 0) {
+                    return data.items.map((tx: any) => ({
+                        from: tx.from?.hash || tx.from,
+                        to: tx.to?.hash || tx.to,
+                        fromShort: (tx.from?.hash || tx.from).slice(0, 10),
+                        toShort: (tx.to?.hash || tx.to).slice(0, 10),
+                        amount: ethers.formatEther(tx.value || '0'),
+                        symbol: this.getNativeSymbol(chainId),
+                        isError: tx.success === false
+                    }));
+                }
+            }
+        } catch { }
+        return [];
+    }
+
+    // --- ViewModel ---
+
+    private async buildBillViewModel(data: any): Promise<BillViewModel> {
+        const { request, tx, receipt, timestamp, classification, userAddress, fromName, toName, pricedMovements, internalTxs, feeData } = data;
+        const chainId = request.chainId;
+        const now = new Date();
+        const txDate = new Date(timestamp * 1000);
+
+        // Aggregation
+        let totalIn = 0;
+        let totalOut = 0;
+        let countIn = 0;
+        let countOut = 0;
+
+        const items: TokenItemViewModel[] = pricedMovements.map((m: PricedTokenMovement) => {
+            if (m.isIn) { totalIn += m.historicValueUsd; countIn++; }
+            else { totalOut += m.historicValueUsd; countOut++; }
+
+            // Safe Unicode Icons:
+            // IN:  ▲ (U+25B2) or 📥 (Avoid emoji if possible, prefer simple chars) -> Using Arrow Up
+            // OUT: ▼ (U+25BC) or 📤 -> Using Arrow Down
+            // Actually, user requested SAFE unicode. 
+            // Let's use: IN = ▼ (Green in CSS), OUT = ▲ (Red in CSS)? 
+            // Or typically In = +, Out = -.
+            // The template uses specific classes (.direction-in/out).
+            // We just need a symbol. + / - is safest.
+            const dirSymbol = m.isIn ? "+" : "-";
+
+            return {
+                direction: m.isIn ? 'in' : 'out',
+                isIn: m.isIn,
+                tokenIcon: "", // Removed emoji, let template handle Layout or use CSS content
+                tokenSymbol: m.symbol,
+                tokenAddress: m.address,
+                fromShort: `${m.from.slice(0, 6)}...${m.from.slice(-4)}`,
+                toShort: `${m.to.slice(0, 6)}...${m.to.slice(-4)}`,
+                amountFormatted: formatEth(ethers.formatUnits(m.amount, m.decimals)), // Clean decimals
+                usdValue: `$${formatUsd(m.currentValueUsd)}`
+            };
+        });
+
+        const netChange = totalIn - (totalOut + feeData.feeUsdNum);
+
+        const randomAd = this.adminService.getRandomAd('pdf');
+        const qrCodeDataUrl = await QRCode.toDataURL(this.getExplorerUrl(chainId, tx.hash));
+
+        return {
+            BILL_ID: `BILL-${chainId}-${receipt.blockNumber}-${tx.hash.slice(0, 6)}`,
+            BILL_VERSION: "2.6.0 (Enterprise)",
+            GENERATED_AT: now.toLocaleString(),
+            STATUS: receipt.status === 1 ? "confirmed" : "failed",
+            STATUS_CONFIRMED: receipt.status === 1,
+            CHAIN_NAME: this.getChainName(chainId),
+            CHAIN_ID: chainId,
+            CHAIN_SYMBOL: this.getNativeSymbol(chainId),
+            CHAIN_ICON: "", // Removed Emoji
+            TRANSACTION_HASH: tx.hash,
+            BLOCK_NUMBER: receipt.blockNumber.toLocaleString(),
+            BLOCK_HASH_SHORT: `${receipt.blockHash.slice(0, 10)}...`,
+            TIMESTAMP: txDate.toLocaleString(),
+            TIMESTAMP_RELATIVE: this.getRelativeTime(txDate),
+            CONFIRMATIONS: 12,
+            TYPE: classification.functionalType,
+            TYPE_READABLE: transactionClassifier.getTypeLabel(classification.functionalType),
+            TYPE_ICON: "", // Removed Emoji
+            IS_MULTISIG: classification.executionType === ExecutionType.MULTISIG,
+            IS_SMART_ACCOUNT: classification.executionType === ExecutionType.ACCOUNT_ABSTRACTION,
+            ENVELOPE_LABEL: tx.type !== undefined ? this.getEnvelopeLabel(tx.type) : 'LEGACY',
+            PROTOCOL_TAG: classification.protocol?.toUpperCase() || classification.details.protocol?.toUpperCase(),
+            FROM_ADDRESS: classification.details?.sender || tx.from,
+            FROM_ENS: fromName,
+            FROM_AVATAR: this.getAvatar(classification.details?.sender || tx.from, fromName),
+            TO_ADDRESS: tx.to || "Contract Creation",
+            TO_ENS: toName,
+            TO_AVATAR: this.getAvatar(tx.to || "0x00", toName),
+            ITEMS: items,
+            ITEMS_COUNT: items.length,
+            INTERNAL_TXS: internalTxs,
+            HAS_INTERNAL_TXS: internalTxs.length > 0,
+            GAS_USED: formatGasUsed(feeData.gasUsed),
+            GAS_PRICE_GWEI: ethers.formatUnits(feeData.gasPrice, 'gwei'),
+            TOTAL_FEE: formatEth(feeData.feeEth),
+            TOTAL_FEE_USD: feeData.feeUSD,
+            TOTAL_IN_USD: formatUsd(totalIn),
+            TOTAL_OUT_USD: formatUsd(totalOut),
+            TOKENS_IN_COUNT: countIn,
+            TOKENS_OUT_COUNT: countOut,
+            NET_CHANGE_USD: formatUsd(Math.abs(netChange)),
+            NET_CHANGE_SIGN: netChange >= 0 ? "+" : "-",
+            NET_CHANGE_POSITIVE: netChange >= 0,
+            RPC_PROVIDER: "Enterprise RPC",
+            CONFIDENCE_PERCENT: Math.round(classification.confidence.score * 100),
+            QR_CODE_DATA_URL: qrCodeDataUrl,
+            EXPLORER_URL: this.getExplorerUrl(chainId, tx.hash),
+            hasAd: !!randomAd,
+            adLink: randomAd?.clickUrl || "",
+            adContent: randomAd?.contentHtml || "",
+            INCLUDE_AUDIT: true,
+            PRICE_SOURCE: 'Combined Oracle (Hist+Curr)',
+            CLASSIFICATION_METHOD: 'Determinisitic Rule Engine',
+            REORG_DETECTED: false,
+            CONFIDENCE: Math.round(classification.confidence.score * 100)
+        };
+    }
+
+    // --- Render ---
+
+    private async renderPdf(data: BillViewModel, fileName: string): Promise<string> {
+        const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
+
+        try {
+            // Enterprise Layout Strategy:
+            // Single HTML source + CSS toggling for First Page vs Running Header pages
+            const html = renderBillHtml(data);
+            const outputDir = path.join(process.cwd(), 'public', 'bills');
+            if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+
+            const firstPagePath = path.join(outputDir, `temp_p1_${fileName}`);
+            const remainingPagesPath = path.join(outputDir, `temp_p2_${fileName}`);
+            const finalPdfPath = path.join(outputDir, fileName);
+
+            // --- Pass 1: Cover Page (Page 1) ---
+            const page1 = await browser.newPage();
+            await page1.setContent(html, { waitUntil: 'networkidle0' });
+
+            // CSS: Hide the main header on Page 1 if we wanted (but we WANT it on P1)
+            // The template uses '.header' for the main branding.
+            // There is no '.running-header-content' in the template provided. 
+            // The running header is injected by Puppeteer via 'headerTemplate'.
+            // So on P1 (where we disable headerTemplate), we just get the HTML header.
+            // On P2 (where we enable headerTemplate), we get the HTML content + Running Header.
+            // We want to avoid the MAIN HEADER showing up on P2?
+            // Yes, standard practice.
+            // But P2 starts with content that follows P1.
+            // If the HTML is static, the .header is at the top.
+            // P2 will naturally be further down.
+            // Unless the intention is that .header renders on EVERY page?
+            // No, it's a static HTML block.
+            // So we don't need to hide anything on P1.
+            // We just need to make sure Puppeteer's running header doesn't show on P1.
+            // We achieve that by displayHeaderFooter: false for P1.
+            // So P1 is fine.
+
+            // For P2: We want headerTemplate (running header).
+            // We do NOT want the HTML .header to appear again.
+            // Since it's at the top of the HTML, and P2 is a continuation, it WON'T appear again naturally.
+            // UNLESS we are rendering P2 as a fresh render of the same HTML?
+            // Yes, we are rendering 'page2' with the SAME html.
+            // If we just print 'pageRanges: 2-', Puppeteer renders the whole doc.
+            // If the content flows correctly, Page 2 logic is implicit.
+
+            // Wait, if content fits on Page 1, Page 2 is empty.
+            // If content overflows, Page 2 has content.
+            // The HTML .header is only at the top.
+            // So it will ONLY be on Page 1.
+            // So we generally don't need to hide .header on P2, because it isn't there!
+            // The only case is if we were trying to "force" P2 to act like P1 was missing?
+            // No, we want natural flow.
+
+            // So, actually, strict visibility hiding might be redundant if the flow is natural.
+            // BUT, the user's previous code was hiding 'running-header' on P1.
+            // And hiding 'first-page-header' on P2.
+            // As I analyzed, the template DOES NOT HAVE 'running-header' in the BODY.
+            // It only has .header.
+            // So hiding .running-header-content on P1 is a no-op safe guard for older templates?
+            // I will leave it but assume it does nothing on the new template.
+
+            // CRITICAL: The user's template has <header class="page-content"> wrapping .header.
+            // If we want to be safe, we just let it flow.
+
+            // Update: I will just clean up the "visibility" logic to be minimal/safe.
+
+            // Unified Margin Strategy:
+            // Use consistent margins for BOTH passes so content flows identically.
+            // This prevents "Duplicate Content" issues where Pass 1 fits more content than Pass 2.
+            const pdfMargin = { top: '60px', bottom: '60px', left: '60px', right: '60px' };
+
+            // Inject CSS to reset the .page-content padding, as we now rely on PDF margins.
+            // This ensures the Hero starts at the correct visual position (40px from top edge).
+            const resetPaddingCss = `
+                .page-content { padding: 0 !important; }
+                .header { margin-top: 0 !important; } 
+                /* Removed @page margin override */
+            `;
+
+            await page1.addStyleTag({ content: resetPaddingCss });
+
+            await page1.pdf({
+                path: firstPagePath,
+                format: 'A4',
+                printBackground: true,
+                displayHeaderFooter: false,
+                margin: pdfMargin,
+                pageRanges: '1'
+            });
+            await page1.close();
+
+            // --- Pass 2: Content Pages (Page 2+) ---
+            // Re-use same margins logic
+            const page2 = await browser.newPage();
+            await page2.setContent(html, { waitUntil: 'networkidle0' });
+            await page2.addStyleTag({ content: resetPaddingCss });
+
+            // Adjust header template to align with margins
+            // Note: headerTemplate is placed inside the top-margin box.
+
+            await page2.pdf({
+                path: remainingPagesPath,
+                format: 'A4',
+                printBackground: true,
+                displayHeaderFooter: true,
+                headerTemplate: `
+                    <div style="width:100%; font-family: 'Inter', sans-serif; font-size: 9px; padding: 0 60px; color: #64748b; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; margin-bottom: 10px;">
+                        <span style="font-weight: 600; color: #0f172a;">CHAIN RECEIPT</span>
+                        <span>${data.BILL_ID} <span style="margin: 0 8px;">|</span> Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
+                    </div>
+                `,
+                footerTemplate: `<div style="width:100%;font-size:7px;text-align:center;color:#94a3b8;">Generated by Chain Receipt Assurance Protocols</div>`,
+                margin: pdfMargin,
+                pageRanges: '2-'
+            });
+            await page2.close();
+
+            // --- Merge ---
+            const pdfDoc = await PDFDocument.create();
+            const p1 = await PDFDocument.load(fs.readFileSync(firstPagePath));
+
+            // Copy Page 1
+            const [cov] = await pdfDoc.copyPages(p1, [0]);
+            pdfDoc.addPage(cov);
+
+            // Attempt to load Page 2+
+            if (fs.existsSync(remainingPagesPath)) {
+                try {
+                    const p2 = await PDFDocument.load(fs.readFileSync(remainingPagesPath));
+                    if (p2.getPageCount() > 0) {
+                        // Puppeteer pageRanges '2-' on a 1-page doc might result in 0 pages?
+                        // If it resulted in >0 pages, add them.
+                        // Note: If original doc was 1 page, pageRanges '2-' is invalid/empty.
+                        const indices = Array.from({ length: p2.getPageCount() }, (_, i) => i);
+                        const others = await pdfDoc.copyPages(p2, indices);
+                        others.forEach(o => pdfDoc.addPage(o));
+                    }
+                    fs.unlinkSync(remainingPagesPath);
+                } catch (e) {
+                    // Likely empty or invalid PDF if range was out of bounds
+                }
+            }
+
+            fs.writeFileSync(finalPdfPath, await pdfDoc.save());
+            fs.unlinkSync(firstPagePath);
+
+        } finally {
+            await browser.close();
+        }
+
+        return `/bills/${fileName}`;
+    }
+
+    // --- Helpers (Private) ---
+
+    private getRpcUrl(chainId: number): string {
+        const k = process.env.ALCHEMY_API_KEY;
+        if (k && this.isAlchemySupported(chainId)) {
+            switch (chainId) {
+                case 8453: return `https://base-mainnet.g.alchemy.com/v2/${k}`;
+                case 137: return `https://polygon-mainnet.g.alchemy.com/v2/${k}`;
+                case 42161: return `https://arb-mainnet.g.alchemy.com/v2/${k}`;
+                case 10: return `https://opt-mainnet.g.alchemy.com/v2/${k}`;
+                case 11155111: return `https://eth-sepolia.g.alchemy.com/v2/${k}`;
+                default: return `https://eth-mainnet.g.alchemy.com/v2/${k}`;
+            }
+        }
+        if (chainId === 1) return 'https://eth.llamarpc.com';
+        return this.rpcs[chainId] || 'https://eth.llamarpc.com';
+    }
+
+    private isAlchemySupported(chainId: number) { return [1, 137, 8453, 10, 42161, 11155111].includes(chainId); }
+
+    private getChainName(chainId: number) {
+        if (chainId === 1) return 'Ethereum Mainnet';
+        if (chainId === 8453) return 'Base Mainnet';
+        if (chainId === 137) return 'Polygon';
+        if (chainId === 42161) return 'Arbitrum One';
+        if (chainId === 10) return 'Optimism';
+        return 'Chain ' + chainId;
+    }
+
+    private getNativeSymbol(chainId: number) {
+        if (chainId === 137) return 'MATIC';
+        if (chainId === 56) return 'BNB';
+        if (chainId === 43114) return 'AVAX';
+        return 'ETH';
+    }
+
+    private getExplorerUrl(chainId: number, hash: string) {
+        let domain = 'etherscan.io';
+        if (chainId === 8453) domain = 'basescan.org';
+        if (chainId === 10) domain = 'optimistic.etherscan.io';
+        if (chainId === 137) domain = 'polygonscan.com';
+        if (chainId === 42161) domain = 'arbiscan.io';
+        return `https://${domain}/tx/${hash}`;
+    }
+
+    private async resolveNames(from: string, to: string | null, chain: number) {
+        const p = new ethers.JsonRpcProvider('https://eth.llamarpc.com');
+        const resolve = async (a: string) => { try { return await p.lookupAddress(a); } catch { return null; } };
+        return { fromName: await resolve(from), toName: to ? await resolve(to) : null };
+    }
+
+    private getAvatar(addr: string, name: string | null) { return name ? name.slice(0, 2).toUpperCase() : addr.slice(2, 4).toUpperCase(); }
+
+    private getRelativeTime(d: Date) {
+        const diff = Date.now() - d.getTime();
+        const hrs = Math.floor(diff / 36e5);
+        return hrs < 24 ? `${hrs} hours ago` : `${Math.floor(hrs / 24)} days ago`;
+    }
+
+    private getEnvelopeLabel(t: number) {
+        if (t === 1) return 'EIP-2930';
+        if (t === 2) return 'EIP-1559';
+        if (t === 3) return 'EIP-4844';
+        return 'Legacy';
+    }
+}

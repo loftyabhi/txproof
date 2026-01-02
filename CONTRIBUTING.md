@@ -1,77 +1,58 @@
 # Contributing to Chain Receipt
 
-Thank you for your interest in contributing to the Chain Receipt system! We welcome contributions from the community to help make this project better.
-
-## Code of Conduct
-
-Please help us keep this project open and inclusive. Be respectful and considerate of others.
-
-## How to Contribute
-
-1.  **Fork the Repository**: Click the "Fork" button on the top right of the repository page.
-2.  **Clone your Fork**:
-    ```bash
-    git clone https://github.com/YOUR_USERNAME/chain-receipt.git
-    cd chain-receipt
-    ```
-3.  **Create a Branch**:
-    ```bash
-    git checkout -b feature/amazing-feature
-    ```
-4.  **Make Changes**: Implement your feature or fix.
-5.  **Commit Changes**:
-    ```bash
-    git commit -m "feat: Add amazing feature"
-    ```
-    *Please follow [Conventional Commits](https://www.conventionalcommits.org/).*
-6.  **Push to Branch**:
-    ```bash
-    git push origin feature/amazing-feature
-    ```
-7.  **Open a Pull Request**: Submit your PR on the main repository.
+Thank you for your interest in contributing! This project is a **Monorepo** managed by npm workspaces.
 
 ## Development Setup
 
-### Prerequisites
+### 1. Installation
 
--   Node.js (v18 or higher)
--   npm or yarn
--   Git
-
-### Installation
-
-1.  Install dependencies for both backend and frontend:
-    ```bash
-    npm install
-    cd client && npm install && cd ..
-    ```
-
-2.  Configure Environment Variables:
-    -   Copy `.env.example` to `.env` (create one if missing based on `DEPLOYMENT.md`).
-    -   Fill in the required values.
-
-### Running Locally
-
-To start both the backend and frontend simultaneously:
+We use the root `package.json` to manage dependencies for all apps and packages.
 
 ```bash
-npm run dev:all
+# Install everything
+npm install
 ```
 
--   **Frontend**: [http://localhost:3001](http://localhost:3001)
--   **Backend**: [http://localhost:3000](http://localhost:3000)
+### 2. Project Structure
 
-## Project Structure
+-   `apps/web`: Next.js Frontend.
+-   `apps/api`: Express Backend.
+-   `packages/contracts`: Smart Contracts & ABIs.
+-   `packages/domain`: Shared TypeScript interfaces.
+-   `packages/database`: SQL Schema & Seeds.
+-   `tools/`: Verification scripts.
 
--   `/client`: Next.js Frontend application.
--   `/src`: Backend Node.js/Express application.
--   `/contracts`: Hardhat smart contract development environment.
--   `/scripts`: Utility scripts.
+### 3. Running Locally
 
-## Guidelines
+**Start Everything:**
+```bash
+npm run dev
+```
 
--   **Code Style**: ensure your code matches the existing style (Prettier/ESLint).
--   **Testing**:
-    -   Run tests before submitting if available (`npm run test`).
-    -   **PDF Verification**: When modifying `BillService.ts`, always verify that PDFs utilize the new Two-Pass layout and that Internal Transactions appear for complex calls (e.g. Uniswap/Router).
--   **Documentation**: Update README or other docs if your change affects usage.
+**Start Specific App:**
+```bash
+npm run dev -w apps/web
+# OR
+npm run dev -w apps/api
+```
+
+### 4. Working with Shared Packages
+
+If you modify a shared package (e.g., `packages/domain`):
+1.  Make your changes in `packages/domain/src`.
+2.  The changes are immediately available to apps (via TypeScript path mapping/symlinks).
+3.  If you add a new dependency to a package, run `npm install` at the root.
+
+### 5. PDF Generation
+
+The PDF engine is located in `apps/api`.
+-   **Templates**: Located in `apps/api/templates`.
+-   **Verification**: Run `npx ts-node tools/verification/verify_bill_service_v2.ts` to test PDF generation without running the full server.
+
+## Code Style
+
+-   **Strict Boundaries**:
+    -   Common types -> `packages/domain`
+    -   Frontend code -> `apps/web` (Never import from `api`)
+    -   Backend code -> `apps/api`
+-   **Secrets**: Use `.env` files in App directories only.

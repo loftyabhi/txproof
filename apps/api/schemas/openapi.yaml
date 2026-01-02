@@ -1,0 +1,202 @@
+openapi: 3.0.0
+info:
+  title: Chain Receipt API
+  version: 1.0.0
+  description: API for resolving blockchain transactions into bills and managing user plans.
+servers:
+  - url: http://localhost:3001/api/v1
+    description: Local Development Server
+paths:
+  /health:
+    get:
+      summary: Health Check
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  timestamp:
+                    type: number
+
+  /auth/login:
+    post:
+      summary: Admin Login via Wallet Signature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                address:
+                  type: string
+                signature:
+                  type: string
+                nonce:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                  role:
+                    type: string
+  
+  /bills/resolve:
+    post:
+      summary: Resolve a transaction hash into a bill (Public)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - txHash
+                - chainId
+              properties:
+                txHash:
+                  type: string
+                  pattern: "^0x[a-fA-F0-9]{64}$"
+                chainId:
+                  type: integer
+                connectedWallet:
+                  type: string
+      responses:
+        '200':
+          description: Request Queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  jobId:
+                    type: string
+                  message:
+                    type: string
+  
+  /bills/job/{id}:
+    get:
+      summary: Get Bill Job Status
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Job Status and Result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  state:
+                    type: string
+                    enum: [waiting, active, completed, failed, unknown]
+                  pdfUrl:
+                    type: string
+                    nullable: true
+                  data:
+                    $ref: '#/components/schemas/Bill'
+                  error:
+                    type: string
+                    nullable: true
+        '404':
+          description: Job not found
+
+  /ads/random:
+    get:
+      summary: Get a random Ad
+      parameters:
+        - in: query
+          name: placement
+          schema:
+            type: string
+            enum: [web, pdf]
+      responses:
+        '200':
+          description: Ad Content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  imageUrl:
+                    type: string
+                  text:
+                    type: string
+                  linkUrl:
+                    type: string
+
+  /plans:
+    get:
+      summary: Get Public Plans
+      responses:
+        '200':
+          description: List of Plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Plan'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Plan:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        price:
+          type: number
+        features:
+          type: array
+          items:
+            type: string
+            
+    Bill:
+      type: object
+      additionalProperties: true
+      description: Flexible Bill Data Object
+      properties:
+        BILL_ID:
+          type: string
+        CHAIN_ID:
+          type: integer
+        TIMESTAMP:
+          type: string
+        TOTAL_IN_USD:
+          type: string
+        TOTAL_OUT_USD:
+          type: string
+        ITEMS:
+          type: array
+          items:
+            type: object
