@@ -20,8 +20,14 @@ The frontend is a Next.js application located in `apps/web`.
     # Show Your Support System
     NEXT_PUBLIC_SUPPORT_VAULT_ADDRESS=0x...
     NEXT_PUBLIC_ADMIN_ADDRESS=0x...
+    NEXT_PUBLIC_SUPPORT_VAULT_ADDRESS=0x...
+    NEXT_PUBLIC_ADMIN_ADDRESS=0x...
     NEXT_PUBLIC_ALCHEMY_API_KEY=...  # Optional: For high-performance indexing
-    ```
+    
+    # Supabase (Required for Contributor Caching)
+    NEXT_PUBLIC_SUPABASE_URL=...
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+    SUPABASE_SERVICE_ROLE_KEY=... # CRITICAL: Used for secure DB writes (RLS Bypass)
 
 ## 2. Backend (Render / Railway)
 
@@ -44,7 +50,7 @@ The backend is a Node.js/Express application located in `apps/api`.
     NODE_ENV=production
     PORT=3000
     DATABASE_URL=...
-    REDIS_URL=...
+    REDIS_URL=... # (Optional) Redis Connection String for Price Oracle Caching.
     ALCHEMY_API_KEY=...
     PRIVATE_KEY=...
     ```
@@ -78,8 +84,9 @@ This section explains how to connect your deployed services.
 
 1.  **Get Connection String**:
     *   Go to your **Supabase Dashboard** -> Project Settings -> Database.
-    *   Find "Connection String" -> Select "Node.js" -> Copy the **Transaction Mode** (Pooler) string if available (port 6543), otherwise the Direct string (port 5432).
-    *   *Note*: For serverless/cloud environments, the Transaction Pooler (port 6543) is recommended to prevent connection limit errors.
+    *   Find "Connection String" -> Select "Node.js" -> Copy the **Transaction Mode** (Pooler) string (port 6543).
+    *   *Note*: For serverless/cloud environments, the Transaction Pooler (port 6543) is **REQUIRED** to prevent connection limit errors.
+    *   Format: `postgres://[user]:[password]@[host]:6543/[db_name]?pooler=transaction`
 2.  **Set Variable in Render**:
     *   Go to your **Render Dashboard** -> Select your API Web Service -> Environment.
     *   Add/Update `DATABASE_URL` with the string you copied.

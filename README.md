@@ -28,7 +28,7 @@ This project uses a Workspace-based Monorepo structure:
 ├── packages/
 │   ├── domain/             # Shared Types & Schemas (Zero Runtime)
 │   ├── contracts/          # Smart Contracts & Canonical ABIs
-│   ├── database/           # Supabase Schema & Migrations
+│   ├── database/           # Shared PostgreSQL Client (Supabase) & Migrations
 │   └── config/             # Shared Environment Constants
 │
 └── tools/                  # Deployment & Verification Scripts
