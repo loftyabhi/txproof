@@ -29,7 +29,7 @@ export function AdminLogin({ onLogin }: AdminLoginProps) {
             const signature = await signMessageAsync({ message: nonce });
 
             // 3. Verify on Backend
-            const res = await axios.post('http://localhost:3001/api/v1/auth/login', {
+            const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/login`, {
                 address,
                 signature,
                 nonce

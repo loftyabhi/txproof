@@ -19,7 +19,7 @@ export default function PricingClient() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        axios.get('http://localhost:3001/api/v1/plans')
+        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/plans`)
             .then(res => {
                 setPlans(res.data);
                 setLoading(false);

@@ -34,7 +34,7 @@ export default function Home() {
 
     try {
       // 1. Initiate Job
-      const response = await fetch('http://localhost:3001/api/v1/bills/resolve', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/bills/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -56,13 +56,13 @@ export default function Home() {
       // 2. Poll for Completion
       const pollInterval = setInterval(async () => {
         try {
-          const jobRes = await fetch(`http://localhost:3001/api/v1/bills/job/${jobId}`);
+          const jobRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/bills/job/${jobId}`);
           const jobData = await jobRes.json();
 
           if (jobData.state === 'completed') {
             clearInterval(pollInterval);
             setBillData(jobData.data);
-            setPdfUrl(`http://localhost:3001${jobData.pdfUrl}`);
+            setPdfUrl(`${process.env.NEXT_PUBLIC_API_URL}${jobData.pdfUrl}`);
             setLoading(false);
             toast.success("Documentation compiled successfully.", { id: toastId });
           } else if (jobData.state === 'failed') {

@@ -10,11 +10,12 @@ interface BillJobData {
 /**
  * Redis connection configuration (must match BillQueue)
  */
-const connection = {
+// Parse REDIS_URL if available (Render/Heroku style)
+let connection: any = {
     host: process.env.REDIS_HOST || 'localhost',
     port: parseInt(process.env.REDIS_PORT || '6379', 10),
     password: process.env.REDIS_PASSWORD,
-    maxRetriesPerRequest: null, // Required by BullMQ
+    maxRetriesPerRequest: null,
     enableReadyCheck: true,
     retryStrategy: (times: number) => {
         const delay = Math.min(times * 1000, 30000);
@@ -22,6 +23,23 @@ const connection = {
         return delay;
     }
 };
+
+if (process.env.REDIS_URL) {
+    try {
+        const url = new URL(process.env.REDIS_URL);
+        connection = {
+            ...connection,
+            host: url.hostname,
+            port: parseInt(url.port, 10),
+            password: url.password,
+            username: url.username,
+            tls: url.protocol === 'rediss:' ? { rejectUnauthorized: false } : undefined
+        };
+        console.log(`[BillWorker] Using Redis at ${connection.host}:${connection.port}`);
+    } catch (err) {
+        console.warn('[BillWorker] Invalid REDIS_URL, falling back to individual env vars');
+    }
+}
 
 // Single shared BillService instance (reuses browser instance internally if optimized)
 const billService = new BillService();

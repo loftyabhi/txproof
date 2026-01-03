@@ -35,7 +35,7 @@ export default function DashboardPage() {
     const fetchData = async () => {
         setIsLoadingData(true);
         try {
-            const endpoint = activeTab === 'plans' ? 'http://localhost:3001/api/v1/admin/plans' : 'http://localhost:3001/api/v1/admin/ads';
+            const endpoint = activeTab === 'plans' ? `${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/plans` : `${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/ads`;
             const res = await axios.get(endpoint, { headers: { Authorization: `Bearer ${token}` } });
             if (activeTab === 'plans') setPlans(res.data);
             else setAds(res.data);
@@ -60,7 +60,7 @@ export default function DashboardPage() {
                 label: 'Confirm Delete',
                 onClick: async () => {
                     try {
-                        await axios.delete(`http://localhost:3001/api/v1/admin/${activeTab}/${id}`, {
+                        await axios.delete(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/${activeTab}/${id}`, {
                             headers: { Authorization: `Bearer ${token}` }
                         });
                         toast.success(`${activeTab === 'plans' ? 'Plan' : 'Ad'} deleted successfully`);
@@ -84,7 +84,7 @@ export default function DashboardPage() {
             // Basic ID generation due to lack of backend ID gen for this demo
             const payload = { ...formData, id: formData.id || Date.now().toString() };
 
-            await axios.post(`http://localhost:3001/api/v1/admin/${activeTab}`, payload, {
+            await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/${activeTab}`, payload, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setIsFormOpen(false);

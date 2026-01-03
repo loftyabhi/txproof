@@ -13,7 +13,7 @@ export default function AdBanner() {
     const [ad, setAd] = useState<Ad | null>(null);
 
     useEffect(() => {
-        axios.get('http://localhost:3001/api/v1/ads/random?placement=web')
+        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/ads/random?placement=web`)
             .then(res => {
                 if (res.data) setAd(res.data);
             })
