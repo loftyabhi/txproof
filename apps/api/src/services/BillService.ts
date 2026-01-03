@@ -781,7 +781,7 @@ export class BillService {
                 .header { margin-top: 0 !important; } 
             `;
 
-            await page1.setContent(html, { waitUntil: 'networkidle0' });
+            await page1.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
             await page1.addStyleTag({ content: resetPaddingCss });
 
             const p1Buffer = await page1.pdf({
@@ -794,7 +794,7 @@ export class BillService {
             await page1.close();
 
             const page2 = await browser.newPage();
-            await page2.setContent(html, { waitUntil: 'networkidle0' });
+            await page2.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
             await page2.addStyleTag({ content: resetPaddingCss });
 
             const p2Buffer = await page2.pdf({

@@ -66,10 +66,6 @@ export function useIdentity(address: string | undefined, chainId?: number) {
                 if (age < CACHE_DURATION) {
                     resolveIdentity(parsed.data);
                     shoudFetch = false;
-                    // If we have cached data, we don't return early strictly; 
-                    // we could technically background-refresh, but for now specific "CACHE_DURATION" implies validness.
-                    // However, if the priority source is MISSING in cache (e.g. newly registered), we might want to re-check?
-                    // For simplicity and perf: Trust cache.
                 }
             } catch (e) {
                 localStorage.removeItem(cacheKey);
