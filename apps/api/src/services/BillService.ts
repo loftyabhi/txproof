@@ -9,6 +9,8 @@ import { AdminService } from './AdminService';
 import { ERC20_ABI, ERC721_ABI, ERC1155_ABI } from '../abis/Common';
 import { PDFDocument } from 'pdf-lib';
 import QRCode from 'qrcode';
+import { supabase } from '../lib/supabase';
+import { createHash } from 'crypto';
 
 // --- Strict Interfaces ---
 
@@ -57,6 +59,7 @@ export interface BillViewModel {
     CHAIN_ID: number;
     CHAIN_SYMBOL: string;
     CHAIN_ICON: string;
+    HOME_URL: string;
 
     // Transaction
     TRANSACTION_HASH: string;
@@ -191,19 +194,84 @@ export class BillService {
         console.log(`[BillService] Generating bill for ${txHash} on chain ${chainId}`);
 
         try {
-            // 1. Fetch Data
-            const { provider, tx, receipt, block, timestamp } = await this.fetchTransactionData(txHash, chainId);
+            // 1. Fetch Basic Info first (Cost: 1 RPC Call) to derive the ID
+            // We need Block Number to construct the standard Bill ID
+            const provider = new ethers.JsonRpcProvider(this.getRpcUrl(chainId));
+            const receipt = await provider.getTransactionReceipt(txHash);
 
-            // 2. Classify Transaction
+            if (!receipt) throw new Error('Transaction Receipt not found');
+
+            // Construct Readable Bill ID
+            // Format: BILL-{chainId}-{blockNumber}-{txHashShort}
+            const shortHash = txHash.slice(0, 6).toLowerCase();
+            const billId = `BILL-${chainId}-${receipt.blockNumber}-${shortHash}`;
+
+            const jsonKey = `${billId}.json`;
+            const pdfKey = `${billId}.pdf`;
+            const publicPath = `/bills/${billId}.pdf`;
+
+            console.log(`[BillService] ID Resolved: ${billId}`);
+
+            // 2. Check Cache (Database First)
+            const { data: dbBill, error: dbError } = await supabase
+                .from('bills')
+                .select('bill_json, status')
+                .eq('tx_hash', txHash)
+                .eq('chain_id', chainId)
+                .single();
+
+            if (dbBill && dbBill.bill_json) {
+                console.log(`[BillService] DB Cache Hit! Returning existing bill.`);
+
+                // Sliding Window: Reset deletion timer on access
+                this.touchBill(txHash, chainId).catch(err => console.error("Touch failed", err));
+
+                return {
+                    pdfPath: publicPath,
+                    billData: dbBill.bill_json as BillViewModel
+                };
+            }
+
+            // Fallback: Check Storage (Legacy/PDF check)
+            const { data: existingData } = await supabase
+                .storage
+                .from('receipts')
+                .download(jsonKey);
+
+            if (existingData) {
+                console.log(`[BillService] Storage Cache Hit! Returning existing bill.`);
+                const jsonString = await existingData.text();
+                const cachedViewModel = JSON.parse(jsonString);
+
+                // Background: Migrate to DB & Reset Timer
+                this.saveToDb(txHash, chainId, request.connectedWallet || '', cachedViewModel, true);
+
+                return {
+                    pdfPath: publicPath,
+                    billData: cachedViewModel
+                };
+            }
+
+            // 3. Cache Miss - Resume Generation
+            console.log(`[BillService] Cache Miss. Fetching full data...`);
+
+            // Fetch remaining data (Tx, Block, Timestamp) - Receipt is already fetched
+            // We can reuse the provider but we need to match the signature of fetchTransactionData or call it fully.
+            // For simplicity and robustness, we can call fetchTransactionData but pass the known receipt if we refactored.
+            // But fetchTransactionData fetches everything in parallel.
+            // Let's just let it fetch. It's 1 extra call on a MISS. Acceptable.
+            const { tx, block, timestamp } = await this.fetchFullData(provider, txHash, receipt);
+
+            // Classify Transaction
             const classification = await transactionClassifier.classify(receipt, tx, chainId);
 
-            // 3. Resolve Identity
+            // Resolve Identity
             const userAddress = this.resolveUserIdentity(request, tx, classification);
 
-            // 4. Resolve ENS
+            // Resolve ENS
             const { fromName, toName } = await this.resolveNames(classification.details?.sender || tx.from, tx.to, chainId);
 
-            // 5. Raw Token Parsing (No Pricing yet)
+            // Raw Token Parsing
             const rawMovements = await this.parseRawMovements(receipt.logs, chainId, provider);
 
             // Add Native Transfer if exists
@@ -219,7 +287,7 @@ export class BillService {
                 });
             }
 
-            // 6. Apply Pricing & Direction (Business Logic / Valuation Layer)
+            // Apply Pricing & Direction
             const pricedMovements = await this.applyPricingAndDirection(
                 rawMovements,
                 userAddress,
@@ -227,26 +295,57 @@ export class BillService {
                 chainId,
                 receipt.blockNumber,
                 timestamp,
-                tx.from.toLowerCase() // txOrigin
+                tx.from.toLowerCase()
             );
 
-            // 7. Internal Txs
+            // Internal Txs
             const internalTxs = await this.fetchInternalTransactions(txHash, chainId, receipt.blockNumber);
 
-            // 8. Fees
+            // Fees
             const feeData = await this.calculateFees(receipt, chainId, timestamp);
 
-            // 9. View Model construction
+            // View Model construction
             const billData = await this.buildBillViewModel({
                 request, tx, receipt, timestamp, classification,
                 userAddress, fromName, toName,
-                pricedMovements, internalTxs, feeData
+                pricedMovements, internalTxs, feeData,
+                // Pass derived ID to ensure consistency
+                forcedBillId: billId
             });
 
-            // 10. Render
-            const pdfPath = await this.renderPdf(billData, `${txHash}.pdf`);
+            // 4. Render PDF (Returns Buffer)
+            const pdfBuffer = await this.renderPdfBuffer(billData);
 
-            return { pdfPath, billData };
+            // 5. Upload to Supabase (Parallel)
+            console.log(`[BillService] Uploading ${billId} to Supabase...`);
+
+            // Upload PDF
+            const pdfUpload = supabase.storage
+                .from('receipts')
+                .upload(pdfKey, pdfBuffer, {
+                    contentType: 'application/pdf',
+                    upsert: true
+                });
+
+            // Upload JSON (Metadata for future 0-RPC retrieval)
+            const jsonBuffer = Buffer.from(JSON.stringify(billData));
+            const jsonUpload = supabase.storage
+                .from('receipts')
+                .upload(jsonKey, jsonBuffer, {
+                    contentType: 'application/json',
+                    upsert: true
+                });
+
+            await Promise.all([pdfUpload, jsonUpload]);
+
+            // Save to DB (Cache)
+            await this.saveToDb(txHash, chainId, userAddress, billData, receipt.status === 1);
+
+            // Trigger Cleanup (Async/Fire-and-forget)
+            this.cleanupOldBills().catch(err => console.error("Cleanup failed", err));
+
+            console.log(`[BillService] Generation & Upload Complete.`);
+            return { pdfPath: publicPath, billData };
 
         } catch (error: any) {
             console.error(`[BillService] Generation Failed: ${error.message}`);
@@ -268,6 +367,18 @@ export class BillService {
 
         if (!tx || !receipt) throw new Error('Transaction not found');
         const block = await provider.getBlock(receipt.blockNumber);
+        if (!block) throw new Error('Block not found');
+
+        return { provider, tx, receipt, block, timestamp: block.timestamp };
+    }
+
+    // New Helper to complete data fetching after receipt is known
+    private async fetchFullData(provider: ethers.JsonRpcProvider, txHash: string, receipt: ethers.TransactionReceipt) {
+        const [tx, block] = await Promise.all([
+            provider.getTransaction(txHash),
+            provider.getBlock(receipt.blockNumber)
+        ]);
+        if (!tx) throw new Error('Transaction not found');
         if (!block) throw new Error('Block not found');
 
         return { provider, tx, receipt, block, timestamp: block.timestamp };
@@ -543,7 +654,7 @@ export class BillService {
     // --- ViewModel ---
 
     private async buildBillViewModel(data: any): Promise<BillViewModel> {
-        const { request, tx, receipt, timestamp, classification, userAddress, fromName, toName, pricedMovements, internalTxs, feeData } = data;
+        const { request, tx, receipt, timestamp, classification, userAddress, fromName, toName, pricedMovements, internalTxs, feeData, forcedBillId } = data;
         const chainId = request.chainId;
         const now = new Date();
         const txDate = new Date(timestamp * 1000);
@@ -587,7 +698,7 @@ export class BillService {
         const qrCodeDataUrl = await QRCode.toDataURL(this.getExplorerUrl(chainId, tx.hash));
 
         return {
-            BILL_ID: `BILL-${chainId}-${receipt.blockNumber}-${tx.hash.slice(0, 6)}`,
+            BILL_ID: forcedBillId || `BILL-${chainId}-${receipt.blockNumber}-${tx.hash.slice(0, 6)}`,
             BILL_VERSION: "2.6.0 (Enterprise)",
             GENERATED_AT: now.toLocaleString(),
             STATUS: receipt.status === 1 ? "confirmed" : "failed",
@@ -596,6 +707,7 @@ export class BillService {
             CHAIN_ID: chainId,
             CHAIN_SYMBOL: this.getNativeSymbol(chainId),
             CHAIN_ICON: "", // Removed Emoji
+            HOME_URL: process.env.FRONTEND_URL || 'http://localhost:3000',
             TRANSACTION_HASH: tx.hash,
             BLOCK_NUMBER: receipt.blockNumber.toLocaleString(),
             BLOCK_HASH_SHORT: `${receipt.blockHash.slice(0, 10)}...`,
@@ -647,7 +759,7 @@ export class BillService {
 
     // --- Render ---
 
-    private async renderPdf(data: BillViewModel, fileName: string): Promise<string> {
+    private async renderPdfBuffer(data: BillViewModel): Promise<Uint8Array> {
         const browser = await puppeteer.launch({
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox']
@@ -657,81 +769,22 @@ export class BillService {
             // Enterprise Layout Strategy:
             // Single HTML source + CSS toggling for First Page vs Running Header pages
             const html = renderBillHtml(data);
-            const outputDir = path.join(process.cwd(), 'public', 'bills');
-            if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
-            const firstPagePath = path.join(outputDir, `temp_p1_${fileName}`);
-            const remainingPagesPath = path.join(outputDir, `temp_p2_${fileName}`);
-            const finalPdfPath = path.join(outputDir, fileName);
-
-            // --- Pass 1: Cover Page (Page 1) ---
+            // Generate in-memory buffers
             const page1 = await browser.newPage();
-            await page1.setContent(html, { waitUntil: 'networkidle0' });
 
-            // CSS: Hide the main header on Page 1 if we wanted (but we WANT it on P1)
-            // The template uses '.header' for the main branding.
-            // There is no '.running-header-content' in the template provided. 
-            // The running header is injected by Puppeteer via 'headerTemplate'.
-            // So on P1 (where we disable headerTemplate), we just get the HTML header.
-            // On P2 (where we enable headerTemplate), we get the HTML content + Running Header.
-            // We want to avoid the MAIN HEADER showing up on P2?
-            // Yes, standard practice.
-            // But P2 starts with content that follows P1.
-            // If the HTML is static, the .header is at the top.
-            // P2 will naturally be further down.
-            // Unless the intention is that .header renders on EVERY page?
-            // No, it's a static HTML block.
-            // So we don't need to hide anything on P1.
-            // We just need to make sure Puppeteer's running header doesn't show on P1.
-            // We achieve that by displayHeaderFooter: false for P1.
-            // So P1 is fine.
-
-            // For P2: We want headerTemplate (running header).
-            // We do NOT want the HTML .header to appear again.
-            // Since it's at the top of the HTML, and P2 is a continuation, it WON'T appear again naturally.
-            // UNLESS we are rendering P2 as a fresh render of the same HTML?
-            // Yes, we are rendering 'page2' with the SAME html.
-            // If we just print 'pageRanges: 2-', Puppeteer renders the whole doc.
-            // If the content flows correctly, Page 2 logic is implicit.
-
-            // Wait, if content fits on Page 1, Page 2 is empty.
-            // If content overflows, Page 2 has content.
-            // The HTML .header is only at the top.
-            // So it will ONLY be on Page 1.
-            // So we generally don't need to hide .header on P2, because it isn't there!
-            // The only case is if we were trying to "force" P2 to act like P1 was missing?
-            // No, we want natural flow.
-
-            // So, actually, strict visibility hiding might be redundant if the flow is natural.
-            // BUT, the user's previous code was hiding 'running-header' on P1.
-            // And hiding 'first-page-header' on P2.
-            // As I analyzed, the template DOES NOT HAVE 'running-header' in the BODY.
-            // It only has .header.
-            // So hiding .running-header-content on P1 is a no-op safe guard for older templates?
-            // I will leave it but assume it does nothing on the new template.
-
-            // CRITICAL: The user's template has <header class="page-content"> wrapping .header.
-            // If we want to be safe, we just let it flow.
-
-            // Update: I will just clean up the "visibility" logic to be minimal/safe.
-
-            // Unified Margin Strategy:
-            // Use consistent margins for BOTH passes so content flows identically.
-            // This prevents "Duplicate Content" issues where Pass 1 fits more content than Pass 2.
+            // Unified Margin Strategy
             const pdfMargin = { top: '60px', bottom: '60px', left: '60px', right: '60px' };
 
-            // Inject CSS to reset the .page-content padding, as we now rely on PDF margins.
-            // This ensures the Hero starts at the correct visual position (40px from top edge).
             const resetPaddingCss = `
                 .page-content { padding: 0 !important; }
                 .header { margin-top: 0 !important; } 
-                /* Removed @page margin override */
             `;
 
+            await page1.setContent(html, { waitUntil: 'networkidle0' });
             await page1.addStyleTag({ content: resetPaddingCss });
 
-            await page1.pdf({
-                path: firstPagePath,
+            const p1Buffer = await page1.pdf({
                 format: 'A4',
                 printBackground: true,
                 displayHeaderFooter: false,
@@ -740,17 +793,11 @@ export class BillService {
             });
             await page1.close();
 
-            // --- Pass 2: Content Pages (Page 2+) ---
-            // Re-use same margins logic
             const page2 = await browser.newPage();
             await page2.setContent(html, { waitUntil: 'networkidle0' });
             await page2.addStyleTag({ content: resetPaddingCss });
 
-            // Adjust header template to align with margins
-            // Note: headerTemplate is placed inside the top-margin box.
-
-            await page2.pdf({
-                path: remainingPagesPath,
+            const p2Buffer = await page2.pdf({
                 format: 'A4',
                 printBackground: true,
                 displayHeaderFooter: true,
@@ -768,38 +815,27 @@ export class BillService {
 
             // --- Merge ---
             const pdfDoc = await PDFDocument.create();
-            const p1 = await PDFDocument.load(fs.readFileSync(firstPagePath));
+            const p1 = await PDFDocument.load(p1Buffer);
 
             // Copy Page 1
             const [cov] = await pdfDoc.copyPages(p1, [0]);
             pdfDoc.addPage(cov);
 
-            // Attempt to load Page 2+
-            if (fs.existsSync(remainingPagesPath)) {
-                try {
-                    const p2 = await PDFDocument.load(fs.readFileSync(remainingPagesPath));
-                    if (p2.getPageCount() > 0) {
-                        // Puppeteer pageRanges '2-' on a 1-page doc might result in 0 pages?
-                        // If it resulted in >0 pages, add them.
-                        // Note: If original doc was 1 page, pageRanges '2-' is invalid/empty.
-                        const indices = Array.from({ length: p2.getPageCount() }, (_, i) => i);
-                        const others = await pdfDoc.copyPages(p2, indices);
-                        others.forEach(o => pdfDoc.addPage(o));
-                    }
-                    fs.unlinkSync(remainingPagesPath);
-                } catch (e) {
-                    // Likely empty or invalid PDF if range was out of bounds
+            // Copy Page 2+
+            try {
+                const p2 = await PDFDocument.load(p2Buffer);
+                if (p2.getPageCount() > 0) {
+                    const indices = Array.from({ length: p2.getPageCount() }, (_, i) => i);
+                    const others = await pdfDoc.copyPages(p2, indices);
+                    others.forEach(o => pdfDoc.addPage(o));
                 }
-            }
+            } catch (e) { }
 
-            fs.writeFileSync(finalPdfPath, await pdfDoc.save());
-            fs.unlinkSync(firstPagePath);
+            return await pdfDoc.save();
 
         } finally {
             await browser.close();
         }
-
-        return `/bills/${fileName}`;
     }
 
     // --- Helpers (Private) ---
@@ -866,5 +902,82 @@ export class BillService {
         if (t === 2) return 'EIP-1559';
         if (t === 3) return 'EIP-4844';
         return 'Legacy';
+    }
+    private async saveToDb(txHash: string, chainId: number, wallet: string, data: BillViewModel, isConfirmed: boolean) {
+        try {
+            await supabase.from('bills').upsert({
+                tx_hash: txHash,
+                chain_id: chainId,
+                wallet_address: wallet || null,
+                bill_json: data,
+                status: isConfirmed ? 'COMPLETED' : 'PENDING',
+                updated_at: new Date().toISOString() // Resets timer
+            }, { onConflict: 'tx_hash,chain_id' });
+        } catch (e) {
+            console.warn('[BillService] Failed to save to DB cache', e);
+        }
+    }
+
+    private async touchBill(txHash: string, chainId: number) {
+        // Just update updated_at to now
+        await supabase
+            .from('bills')
+            .update({ updated_at: new Date().toISOString() })
+            .eq('tx_hash', txHash)
+            .eq('chain_id', chainId);
+    }
+
+    private async cleanupOldBills() {
+        // 1. Get Expired Confirmed Bills (updated > 30 Days ago)
+        // We need them first to delete files, then delete rows.
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+        const { data: expiredBills } = await supabase
+            .from('bills')
+            .select('tx_hash, chain_id, bill_json')
+            .eq('status', 'COMPLETED')
+            .lt('updated_at', thirtyDaysAgo)
+            .limit(50); // Batch size to limit memory/execution time
+
+        if (expiredBills && expiredBills.length > 0) {
+            console.log(`[BillService] Cleaning up ${expiredBills.length} expired bills...`);
+
+            const filesToDelete: string[] = [];
+
+            // Collect Files
+            for (const bill of expiredBills) {
+                // We need to reconstruct Bill ID to find the file
+                // Or retrieve it from bill_json if stored there.
+                // BillViewModel has BILL_ID.
+                const vm = bill.bill_json as BillViewModel;
+                if (vm && vm.BILL_ID) {
+                    filesToDelete.push(`${vm.BILL_ID}.pdf`);
+                    filesToDelete.push(`${vm.BILL_ID}.json`);
+                }
+            }
+
+            // Delete from Storage
+            if (filesToDelete.length > 0) {
+                await supabase.storage.from('receipts').remove(filesToDelete);
+            }
+
+            // Delete from DB
+            // We delete by ID pair
+            for (const bill of expiredBills) {
+                await supabase
+                    .from('bills')
+                    .delete()
+                    .eq('tx_hash', bill.tx_hash)
+                    .eq('chain_id', bill.chain_id);
+            }
+        }
+
+        // 2. Delete Unconfirmed > 24 Hours (No files usually, just DB clutter)
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        await supabase
+            .from('bills')
+            .delete()
+            .neq('status', 'COMPLETED')
+            .lt('created_at', oneDayAgo);
     }
 }
