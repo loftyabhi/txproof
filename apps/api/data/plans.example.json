@@ -1,9 +1,0 @@
-[
-    {
-        "id": "Test_1",
-        "title": "Test",
-        "hasAds": true,
-        "priceWei": "0.0001",
-        "validitySeconds": 86400
-    }
-]
