@@ -4,14 +4,18 @@ import { useState, useEffect } from 'react';
 
 import Link from 'next/link';
 import { formatEther } from 'viem';
-import { useAccount, useBalance, useEnsName, useConnect, useDisconnect } from 'wagmi';
+import { useAccount, useBalance, useConnect, useDisconnect } from 'wagmi';
+import { useIdentity } from '../hooks/useIdentity'; // [NEW]
 
 const ADMIN_ADDRESS = process.env.ADMIN_ADDRESS;
 
 export function Navbar() {
     const { address, isConnected } = useAccount();
     const { data: balance } = useBalance({ address });
-    const { data: ensName } = useEnsName({ address });
+
+    // [NEW] Use Custom Hook (ETH Mainnet + Base + Caching)
+    const { name: ensName, avatar: ensAvatar } = useIdentity(address);
+
     const { connect, connectors } = useConnect();
     const { disconnect } = useDisconnect();
     const [isAdmin, setIsAdmin] = useState(false);
@@ -84,12 +88,21 @@ export function Navbar() {
                                             </span>
                                             <div className="h-4 w-[1px] bg-white/10"></div>
                                             <div className="flex items-center gap-2">
-                                                <div className="h-6 w-6 rounded-full bg-gradient-to-tr from-violet-500 to-fuchsia-500 p-[1px]">
-                                                    <div className="h-full w-full rounded-full bg-black flex items-center justify-center">
-                                                        <span className="text-[10px] text-white font-mono">
-                                                            {ensName ? ensName.slice(0, 2).toUpperCase() : address?.slice(2, 4)}
-                                                        </span>
-                                                    </div>
+                                                {/* Avatar / Initials */}
+                                                <div className="h-6 w-6 rounded-full bg-gradient-to-tr from-violet-500 to-fuchsia-500 p-[1px] overflow-hidden">
+                                                    {ensAvatar ? (
+                                                        <img
+                                                            src={ensAvatar}
+                                                            alt="ENS"
+                                                            className="h-full w-full rounded-full object-cover bg-black"
+                                                        />
+                                                    ) : (
+                                                        <div className="h-full w-full rounded-full bg-black flex items-center justify-center">
+                                                            <span className="text-[10px] text-white font-mono">
+                                                                {ensName ? ensName.slice(0, 2).toUpperCase() : address?.slice(2, 4)}
+                                                            </span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 <span className="text-sm font-medium text-gray-400 group-hover:text-gray-300 transition-colors">
                                                     {ensName ? ensName : `${address?.slice(0, 6)}...${address?.slice(-4)}`}
