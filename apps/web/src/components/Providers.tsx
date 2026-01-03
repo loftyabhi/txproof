@@ -1,7 +1,7 @@
 'use client'
 
 import { WagmiProvider, createConfig, http } from 'wagmi'
-import { mainnet, base, sepolia } from 'wagmi/chains'
+import { mainnet, base, sepolia, baseSepolia } from 'wagmi/chains'
 import { injected, metaMask, walletConnect } from 'wagmi/connectors'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
@@ -14,7 +14,7 @@ if (!projectId) {
 }
 
 const config = createConfig({
-    chains: [mainnet, base, sepolia],
+    chains: [mainnet, base, sepolia, baseSepolia],
     connectors: [
         injected(),
         metaMask(),
@@ -23,7 +23,8 @@ const config = createConfig({
     transports: {
         [mainnet.id]: http(),
         [base.id]: http(),
-        [sepolia.id]: http()
+        [sepolia.id]: http(),
+        [baseSepolia.id]: http()
     }
 })
 

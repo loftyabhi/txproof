@@ -98,9 +98,9 @@ export default function PrivacyPolicyClient() {
                             <h2 className="text-xl font-semibold text-white mb-4 pl-14">4. Contact Us</h2>
                             <div className="pl-12 border-l border-white/5 ml-3">
                                 <p>
-                                    If you have any questions about this privacy policy or our privacy practices, please contact us at:
+                                    If you have any questions about this privacy policy or our privacy practices, please
                                     <Link href="/contact-us" className="text-violet-400 hover:text-violet-300 ml-2 font-medium underline-offset-4 hover:underline transition-all">
-                                        Contact Configuration
+                                        Contact Us
                                     </Link>
                                 </p>
                             </div>

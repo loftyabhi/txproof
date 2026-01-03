@@ -648,7 +648,10 @@ export class BillService {
     // --- Render ---
 
     private async renderPdf(data: BillViewModel, fileName: string): Promise<string> {
-        const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
+        const browser = await puppeteer.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
 
         try {
             // Enterprise Layout Strategy:

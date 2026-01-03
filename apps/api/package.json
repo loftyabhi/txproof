@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "ts-node src/index.ts",
     "start": "node dist/index.js",
-    "build": "tsc"
+    "build": "tsc",
+    "postinstall": "npx puppeteer browsers install chrome"
   },
   "dependencies": {
     "@repo/contracts": "*",
