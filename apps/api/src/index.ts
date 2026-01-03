@@ -185,7 +185,7 @@ app.get('/api/v1/ads/random', async (req: Request, res: Response, next: NextFunc
     } catch (e) { next(e); }
 });
 
-app.get('/api/v1/admin/ads', async (req: Request, res: Response, next: NextFunction) => {
+app.get('/api/v1/admin/ads', verifyAdmin, async (req: Request, res: Response, next: NextFunction) => {
     try {
         res.json(await adminService.getAds());
     } catch (e) { next(e); }

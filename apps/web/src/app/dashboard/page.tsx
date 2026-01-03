@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useAccount } from 'wagmi';
 import { AdminLogin } from '../../components/AdminLogin';
 import { Navbar } from '@/components/Navbar';
 import axios from 'axios';
@@ -9,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
 export default function DashboardPage() {
+    const { isConnected, address } = useAccount();
     const [token, setToken] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'plans' | 'ads'>('plans');
 
@@ -27,10 +29,16 @@ export default function DashboardPage() {
     }, []);
 
     useEffect(() => {
-        if (token) {
+        if (!isConnected) {
+            setToken(null);
+        }
+    }, [isConnected, address]);
+
+    useEffect(() => {
+        if (token && isConnected) {
             fetchData();
         }
-    }, [token, activeTab]);
+    }, [token, activeTab, isConnected]);
 
     const fetchData = async () => {
         setIsLoadingData(true);
@@ -96,7 +104,7 @@ export default function DashboardPage() {
         }
     };
 
-    if (!token) {
+    if (!token || !isConnected) {
         return (
             <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center font-sans">
                 {/* A bit of polish for the login wrapper too, though AdminLogin is a separate component */}
