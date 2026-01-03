@@ -904,11 +904,26 @@ export class BillService {
         return 'Legacy';
     }
     private async saveToDb(txHash: string, chainId: number, wallet: string, data: BillViewModel, isConfirmed: boolean) {
+        // [IMPROVEMENT] Auto-create user if missing to avoid FK error
+        // minimizing logs and ensuring data consistency.
+        if (wallet) {
+            try {
+                // Try to create the user (idempotent)
+                const { error } = await supabase.from('users').upsert(
+                    { wallet_address: wallet, is_registered: false },
+                    { onConflict: 'wallet_address', ignoreDuplicates: true } // Don't overwrite existing
+                );
+                if (error) console.warn('[BillService] Failed to auto-create user:', error.message);
+            } catch (uErr) {
+                // Ignore, proceed to save bill
+            }
+        }
+
         try {
             await this.performUpsert(txHash, chainId, wallet, data, isConfirmed);
-        } catch (e) {
-            console.warn('[BillService] First save attempt failed. Retrying without wallet...', e);
-            // Retry without wallet (Foreign Key Violation fallback)
+        } catch (e: any) {
+            // If it still fails (e.g. unknown chain), log and retry without wallet as last resort
+            console.warn('[BillService] Save failed. Retrying without wallet linkage...', e.code);
             try {
                 await this.performUpsert(txHash, chainId, null, data, isConfirmed);
             } catch (retryError) {
