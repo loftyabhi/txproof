@@ -68,6 +68,8 @@ logs/
 # API Generated Files
 apps/api/public/bills/
 apps/api/data/temp/
+apps/api/data/*.json
+!apps/api/data/*.example.json
 *.pdf
 
 # Temporary
@@ -75,4 +77,4 @@ tmp/
 temp/
 
 # --- Puppeteer ---
-.cache/puppeteer
+.cache/

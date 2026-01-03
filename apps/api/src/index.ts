@@ -16,8 +16,22 @@ const port = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Serve generated PDFs statically
-app.use('/bills', express.static(path.join(__dirname, '../public/bills')));
+import { supabase } from './lib/supabase';
+
+// Serve generated PDFs via Supabase Redirect
+app.get('/bills/:fileName', async (req: Request, res: Response) => {
+    const { fileName } = req.params;
+    try {
+        const { data } = supabase.storage.from('receipts').getPublicUrl(fileName);
+        if (data?.publicUrl) {
+            res.redirect(307, data.publicUrl);
+        } else {
+            res.status(404).send('Receipt not found');
+        }
+    } catch (error) {
+        res.status(500).send('Error resolving receipt URL');
+    }
+});
 
 // Services
 const authService = new AuthService();

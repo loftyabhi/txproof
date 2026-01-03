@@ -28,10 +28,10 @@
             --color-text-secondary: #64748b;
             --color-text-tertiary: #94a3b8;
 
-            --color-accent: #6366f1;
-            /* Indigo 500 */
-            --color-accent-light: #e0e7ff;
-            --color-accent-dark: #4338ca;
+            --color-accent: #7c3aed;
+            /* Violet 600 */
+            --color-accent-light: #ede9fe;
+            --color-accent-dark: #5b21b6;
 
             --color-success: #10b981;
             --color-success-bg: #ecfdf5;
@@ -178,10 +178,24 @@
 
         .receipt-title {
             font-size: 24px;
-            font-weight: 600;
+            font-weight: 700;
             color: var(--color-text-primary);
             margin-bottom: var(--space-xs);
             letter-spacing: -0.02em;
+        }
+
+        .btn-home {
+            display: inline-block;
+            background: linear-gradient(135deg, #7c3aed, #4f46e5);
+            color: white;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            /* Slightly rounder */
+            font-weight: 600;
+            font-size: 11px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 4px rgba(124, 58, 237, 0.2);
         }
 
         .receipt-id {
@@ -522,6 +536,7 @@
                     </div>
                 </div>
                 <div class="receipt-meta">
+                    <a href="{{HOME_URL}}" class="btn-home">Visit Home</a>
                     <h2 class="receipt-title">Transaction Receipt</h2>
                     <div class="receipt-id">#{{BILL_ID}}</div>
                     <div class="uppercase-label" style="margin-top: 4px;">{{GENERATED_AT}}</div>

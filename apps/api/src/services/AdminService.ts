@@ -24,6 +24,8 @@ const DATA_DIR = path.join(process.cwd(), 'data');
 export class AdminService {
     private plansFile = path.join(DATA_DIR, 'plans.json');
     private adsFile = path.join(DATA_DIR, 'ads.json');
+    private plansExampleFile = path.join(DATA_DIR, 'plans.example.json');
+    private adsExampleFile = path.join(DATA_DIR, 'ads.example.json');
 
     constructor() {
         // Ensure data directory exists
@@ -31,8 +33,20 @@ export class AdminService {
             fs.mkdirSync(DATA_DIR, { recursive: true });
         }
         // Initialize files if not exist
-        if (!fs.existsSync(this.plansFile)) this.savePlans([]);
-        if (!fs.existsSync(this.adsFile)) this.saveAds([]);
+        if (!fs.existsSync(this.plansFile)) {
+            if (fs.existsSync(this.plansExampleFile)) {
+                fs.copyFileSync(this.plansExampleFile, this.plansFile);
+            } else {
+                this.savePlans([]);
+            }
+        }
+        if (!fs.existsSync(this.adsFile)) {
+            if (fs.existsSync(this.adsExampleFile)) {
+                fs.copyFileSync(this.adsExampleFile, this.adsFile);
+            } else {
+                this.saveAds([]);
+            }
+        }
     }
 
     // --- PLANS ---
