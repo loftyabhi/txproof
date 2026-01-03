@@ -16,7 +16,26 @@ let cachedFontCss: string | null = null;
 const getLocalFontCss = () => {
     if (cachedFontCss) return cachedFontCss;
 
-    const fontDir = path.join(process.cwd(), 'src', 'assets', 'fonts');
+    // Try multiple paths for robust loading in both Dev (src) and Prod (dist)
+    const possiblePaths = [
+        path.join(process.cwd(), 'src', 'assets', 'fonts'), // Dev / Source
+        path.join(process.cwd(), 'assets', 'fonts'),        // Docker / Prod root
+        path.join(__dirname, '..', 'assets', 'fonts')       // Relative to service file
+    ];
+
+    let fontDir = '';
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+            fontDir = p;
+            break;
+        }
+    }
+
+    if (!fontDir) {
+        console.warn('[PdfTemplateHelper] PDF_FONT_FALLBACK_USED: Font directory not found in any known location.');
+        return ''; // Fallback to system fonts
+    }
+
     const loadFont = (file: string) => {
         try {
             return fs.readFileSync(path.join(fontDir, file)).toString('base64');
@@ -37,6 +56,8 @@ const getLocalFontCss = () => {
     };
 
     let css = '';
+    let successCount = 0;
+
     for (const [file, meta] of Object.entries(fonts)) {
         const b64 = loadFont(file);
         if (b64) {
@@ -49,8 +70,14 @@ const getLocalFontCss = () => {
                     src: url(data:font/ttf;base64,${b64}) format('truetype');
                 }
             `;
+            successCount++;
         }
     }
+
+    if (successCount === 0) {
+        console.warn('[PdfTemplateHelper] PDF_FONT_FALLBACK_USED: No fonts were loaded successfully.');
+    }
+
     cachedFontCss = css;
     return css;
 };
@@ -74,18 +101,21 @@ export function renderBillHtml(billData: BillViewModel): string {
     }
 
     const html = cachedTemplate(billData);
-
-    // Inject Local Fonts (Replace Google Fonts Link)
     const fontCss = getLocalFontCss();
+
+    // Deterministic Replacement of Placeholder
+    if (html.includes('<!-- FONT_STYLES -->')) {
+        // Inject specific style block if we have fonts, else remove placeholder
+        return html.replace('<!-- FONT_STYLES -->', fontCss ? `<style>${fontCss}</style>` : '');
+    }
+
+    // Legacy Fallback (should not happen if template is updated)
     if (fontCss) {
-        // Regex to remove the Google Fonts link and inject style
         const googleFontLinkRegex = /<link[^>]*href="https:\/\/fonts\.googleapis\.com[^>]*>/i;
         if (googleFontLinkRegex.test(html)) {
             return html.replace(googleFontLinkRegex, `<style>${fontCss}</style>`);
-        } else {
-            // Fallback: Inject at top of head
-            return html.replace('</head>', `<style>${fontCss}</style></head>`);
         }
+        return html.replace('</head>', `<style>${fontCss}</style></head>`);
     }
 
     return html;

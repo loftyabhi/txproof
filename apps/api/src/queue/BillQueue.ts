@@ -47,7 +47,7 @@ const connection = {
 const queueOptions: QueueOptions = {
     connection,
     defaultJobOptions: {
-        attempts: 3,
+        attempts: 1,
         backoff: {
             type: 'exponential',
             delay: 2000 // Start with 2s, doubles each retry
@@ -56,10 +56,7 @@ const queueOptions: QueueOptions = {
             count: 100, // Keep last 100 completed jobs for debugging
             age: 24 * 3600 // Remove jobs older than 24 hours
         },
-        removeOnFail: {
-            count: 500, // Keep more failed jobs for investigation
-            age: 7 * 24 * 3600 // Keep failed jobs for 7 days
-        }
+        removeOnFail: true
     }
 };
 

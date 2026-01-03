@@ -830,28 +830,59 @@ export class BillService {
     private async renderPdfBuffer(data: BillViewModel): Promise<Uint8Array> {
         const browser = await puppeteer.launch({
             headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage', // Memory optimization for containers
+                '--disable-gpu',           // Stability
+                '--disable-accelerated-2d-canvas',
+                '--block-new-web-contents' // Security
+            ]
         });
 
         try {
-            // Enterprise Layout Strategy:
-            // Single HTML source + CSS toggling for First Page vs Running Header pages
             const html = renderBillHtml(data);
-
-            // Generate in-memory buffers
-            const page1 = await browser.newPage();
-
-            // Unified Margin Strategy
             const pdfMargin = { top: '60px', bottom: '60px', left: '60px', right: '60px' };
-
             const resetPaddingCss = `
                 .page-content { padding: 0 !important; }
                 .header { margin-top: 0 !important; } 
             `;
 
-            await page1.setContent(html, { waitUntil: 'networkidle0', timeout: 60000 });
-            await page1.addStyleTag({ content: resetPaddingCss });
+            // Helper to Setup Page with Strict Interception & Readiness
+            const setupPage = async (page: any) => {
+                await page.setRequestInterception(true);
+                page.on('request', (req: any) => {
+                    const resourceType = req.resourceType();
+                    // Allow data: URIs (fonts/images) and minimal local execution
+                    if (req.isInterceptResolutionHandled()) return;
 
+                    const url = req.url();
+                    if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('file:')) {
+                        req.continue();
+                    } else {
+                        // Block all external networking (fonts.googleapis, images, tracking)
+                        req.abort();
+                    }
+                });
+
+                // Fail-Fast Watchdog Race
+                const renderPromise = async () => {
+                    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                    // Strict Readiness Check
+                    await page.waitForSelector('#render-complete', { timeout: 5000 });
+                    await page.addStyleTag({ content: resetPaddingCss });
+                };
+
+                const watchdog = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('RENDER_DEADLOCK: Page rendering hung (>10s)')), 10000)
+                );
+
+                await Promise.race([renderPromise(), watchdog]);
+            };
+
+            // Page 1
+            const page1 = await browser.newPage();
+            await setupPage(page1);
             const p1Buffer = await page1.pdf({
                 format: 'A4',
                 printBackground: true,
@@ -861,10 +892,9 @@ export class BillService {
             });
             await page1.close();
 
+            // Page 2+
             const page2 = await browser.newPage();
-            await page2.setContent(html, { waitUntil: 'networkidle0', timeout: 60000 });
-            await page2.addStyleTag({ content: resetPaddingCss });
-
+            await setupPage(page2);
             const p2Buffer = await page2.pdf({
                 format: 'A4',
                 printBackground: true,
@@ -884,12 +914,9 @@ export class BillService {
             // --- Merge ---
             const pdfDoc = await PDFDocument.create();
             const p1 = await PDFDocument.load(p1Buffer);
-
-            // Copy Page 1
             const [cov] = await pdfDoc.copyPages(p1, [0]);
             pdfDoc.addPage(cov);
 
-            // Copy Page 2+
             try {
                 const p2 = await PDFDocument.load(p2Buffer);
                 if (p2.getPageCount() > 0) {

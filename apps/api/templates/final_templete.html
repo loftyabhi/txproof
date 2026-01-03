@@ -5,9 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chain Receipt - Transaction Receipt {{BILL_ID}}</title>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-        rel="stylesheet">
+    <!-- FONT_STYLES -->
     <style>
         /* ==================== RESET & BASE ==================== */
         * {
@@ -809,6 +807,8 @@
             el.style.width = el.getAttribute('data-width');
         });
     </script>
+    <!-- Readiness Marker for Puppeteer -->
+    <div id="render-complete"></div>
 </body>
 
 </html>
