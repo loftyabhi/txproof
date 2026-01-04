@@ -10,7 +10,7 @@ Chain Receipt is a full-stack application designed to generate detailed financia
 - **Support System**: Accept donations via `SupportVault.sol` with **Anonymous** contribution support.
 - **Event-Driven Indexer**: Hybrid indexing with 24h passive mode + instant trigger on contribution.
 - **Blockscout Integration**: Fetch internal transactions for accurate financial records. ERC20 tokens.
--   **Admin Dashboard**: comprehensive control center to manage minimum contributions, allow/ban tokens, and withdraw funds securely.
+- **Admin Dashboard**: Control center to manage Advertisement campaigns (Web & PDF placements).
 -   **Zero-Knowledge Privacy**: Client-side processing architecture ensuring user data and private keys never leave the browser.
 -   **Enterprise Security**: Strict physical separation of frontend and backend runtimes.
 -   **Internal Transactions**: Detailed tracking of smart contract executions.
