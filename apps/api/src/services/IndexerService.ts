@@ -34,11 +34,19 @@ export class IndexerService {
 
         // 2. Secondary: ENV (if provided)
         if (process.env.BASE_RPC_URL && process.env.BASE_RPC_URL !== "https://mainnet.base.org") {
-            providers.push({
-                provider: new ethers.JsonRpcProvider(process.env.BASE_RPC_URL),
-                priority: 2,
-                weight: 1
-            });
+            const url = process.env.BASE_RPC_URL.toLowerCase();
+            const isSepolia = url.includes('sepolia');
+            const isMainnet = CHAIN_ID === 8453;
+
+            if (isMainnet && isSepolia) {
+                console.warn("[Indexer] Ignoring BASE_RPC_URL (Sepolia detected) for Mainnet chain configuration.");
+            } else {
+                providers.push({
+                    provider: new ethers.JsonRpcProvider(process.env.BASE_RPC_URL),
+                    priority: 2,
+                    weight: 1
+                });
+            }
         }
 
         // Use FallbackProvider for redundancy
@@ -46,7 +54,13 @@ export class IndexerService {
         if (providers.length === 1) {
             this.provider = (providers[0] as any).provider;
         } else {
-            this.provider = new ethers.FallbackProvider(providers, 1);
+            try {
+                this.provider = new ethers.FallbackProvider(providers, 1);
+            } catch (error: any) {
+                console.warn("[Indexer] FallbackProvider failed (likely network mismatch). Reverting to primary provider only.", error.message);
+                // Fallback to the first provider (Public Node)
+                this.provider = (providers[0] as any).provider;
+            }
         }
 
         // Unique ID for this instance (stateless execution)
@@ -96,7 +110,7 @@ export class IndexerService {
         try {
             latestBlock = await this.provider.getBlockNumber();
         } catch (err) {
-            console.error('[Indexer] network failure: getBlockNumber');
+            console.error('[Indexer] network failure: getBlockNumber', err);
             return; // Lock expires naturally
         }
 
