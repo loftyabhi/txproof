@@ -7,7 +7,7 @@ import { useAccount, useWriteContract, useSwitchChain, useChainId } from 'wagmi'
 import { RefreshCw } from 'lucide-react'; // Import Refresh Icon
 import { parseEther } from 'viem';
 // Removed AppKit imports
-import { baseSepolia } from 'wagmi/chains';
+import { base } from 'wagmi/chains';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 
@@ -65,7 +65,7 @@ export default function SupportClient() {
     ] as const;
 
     const VAULT_ADDRESS = process.env.NEXT_PUBLIC_SUPPORT_VAULT_ADDRESS as `0x${string}`;
-    const TARGET_CHAIN_ID = baseSepolia.id;
+    const TARGET_CHAIN_ID = base.id;
 
     const handleContribute = async () => {
         if (!isConnected) {
@@ -85,9 +85,10 @@ export default function SupportClient() {
 
         // Auto-switch Network
         if (chainId !== TARGET_CHAIN_ID) {
-            const loadingId = toast.loading("Switching network to Base Sepolia...");
+            const loadingId = toast.loading("Switching network to Base Mainnet...");
             try {
                 await switchChainAsync({ chainId: TARGET_CHAIN_ID });
+                await new Promise(r => setTimeout(r, 1000)); // [FIX] Wait for wallet state to stabilize
                 toast.dismiss(loadingId);
             } catch (switchError: any) {
                 toast.dismiss(loadingId);
@@ -110,6 +111,7 @@ export default function SupportClient() {
                 functionName: 'contributeNative',
                 args: [isAnonymous], // Use state
                 value: parseEther(contributionAmount),
+                chainId: TARGET_CHAIN_ID, // [FIX] Explicitly bind to correct chain to prevent connector ambiguities
             });
 
             toast.success("Contribution Successful!", {
@@ -241,7 +243,7 @@ export default function SupportClient() {
                                 {!isPending && <ArrowRight size={18} />}
                             </button>
                             <p className="text-center text-xs text-zinc-500">
-                                Supports Native ETH on Base Sepolia.
+                                Supports Native ETH on Base Mainnet.
                             </p>
                         </div>
                     </motion.div>
