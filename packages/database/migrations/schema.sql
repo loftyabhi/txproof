@@ -127,9 +127,23 @@ CREATE TABLE IF NOT EXISTS indexer_state (
     key VARCHAR(50),
     chain_id INT NOT NULL DEFAULT 84532,
     last_synced_block BIGINT NOT NULL CHECK (last_synced_block >= 0),
+    -- [NEW] Parallel & Observability Columns
+    locked_until TIMESTAMP,
+    owner_id VARCHAR(50),
+    leased_from_block BIGINT,
+    leased_to_block BIGINT,
+    last_success_at TIMESTAMP,
+    last_attempt_at TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (key, chain_id)
 );
+
+-- Seed Initial Indexer State (Base Sepolia Deployment Block)
+-- This prevents scanning 16M+ empty blocks if state is lost/reset.
+INSERT INTO indexer_state (key, chain_id, last_synced_block)
+VALUES ('contributors_sync', 84532, 35798250)
+ON CONFLICT (key, chain_id) 
+DO UPDATE SET last_synced_block = EXCLUDED.last_synced_block;
 
 -- -----------------------------------------------------------------------------
 -- 8. INDEXER EVENTS (Immutable Log)
@@ -143,6 +157,7 @@ CREATE TABLE IF NOT EXISTS contributor_events (
     block_timestamp TIMESTAMP,
     donor_address VARCHAR(42) NOT NULL,
     amount_wei NUMERIC(78, 0) NOT NULL,
+    is_anonymous BOOLEAN DEFAULT FALSE,
     message TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(chain_id, tx_hash, log_index)
@@ -211,13 +226,15 @@ CREATE TRIGGER no_bill_rewrite BEFORE UPDATE ON bills FOR EACH ROW EXECUTE FUNCT
 -- 3. Contributor Aggregation Trigger
 CREATE OR REPLACE FUNCTION update_contributors() RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO contributors (wallet_address, chain_id, total_amount_wei, contribution_count, last_contribution_at, updated_at)
-  VALUES (NEW.donor_address, NEW.chain_id, NEW.amount_wei, 1, NEW.block_timestamp, NOW())
+  INSERT INTO contributors (wallet_address, chain_id, total_amount_wei, contribution_count, last_contribution_at, is_anonymous, updated_at)
+  VALUES (NEW.donor_address, NEW.chain_id, NEW.amount_wei, 1, NEW.block_timestamp, NEW.is_anonymous, NOW())
   ON CONFLICT (wallet_address, chain_id)
   DO UPDATE SET
     total_amount_wei = contributors.total_amount_wei + NEW.amount_wei,
     contribution_count = contributors.contribution_count + 1,
-    last_contribution_at = NEW.block_timestamp,
+    -- [SAFETY] Prevent out-of-order execution from overwriting newer timestamps
+    last_contribution_at = GREATEST(contributors.last_contribution_at, NEW.block_timestamp),
+    is_anonymous = NEW.is_anonymous, 
     updated_at = NOW();
   RETURN NEW;
 END;
@@ -226,21 +243,114 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS trg_update_contributors ON contributor_events;
 CREATE TRIGGER trg_update_contributors AFTER INSERT ON contributor_events FOR EACH ROW EXECUTE FUNCTION update_contributors();
 
--- 4. Atomic Ingestion RPC
+-- 4. [NEW] Claim Scan Lease RPC
+-- returns { allowed: boolean, start_block: bigint, end_block: bigint, message: text }
+CREATE OR REPLACE FUNCTION claim_indexer_scan(
+    p_chain_id INT,
+    p_key VARCHAR,
+    p_owner_id VARCHAR,
+    p_force BOOLEAN,
+    p_batch_size INT DEFAULT 10
+) RETURNS JSONB AS $$
+DECLARE
+    v_state RECORD;
+    v_now TIMESTAMP := NOW();
+    v_lease_duration INTERVAL := '15 minutes'; -- Enterprise safety (cold starts/lag)
+    v_throttle_interval INTERVAL := '6 hours';
+    v_start_block BIGINT;
+BEGIN
+    -- 1. Get State (Lock)
+    SELECT * INTO v_state FROM indexer_state 
+    WHERE key = p_key AND chain_id = p_chain_id FOR UPDATE; 
+
+    -- [CRITICAL] Fail if state missing. Manual Init Required.
+    IF v_state IS NULL THEN
+        RAISE EXCEPTION 'Indexer state not initialized for key % chain %. Run migration.', p_key, p_chain_id;
+    END IF;
+
+    -- 2. SAFETY CHECK: Strict Locking
+    IF v_state.locked_until IS NOT NULL 
+       AND v_state.locked_until > v_now 
+       AND v_state.owner_id IS DISTINCT FROM p_owner_id THEN
+         RETURN jsonb_build_object(
+            'allowed', false,
+            'reason', 'LOCKED_BY_OTHER',
+            'locked_until', v_state.locked_until,
+            'current_owner', v_state.owner_id
+        );
+    END IF;
+
+    -- 3. THROTTLE CHECK: Rate Limiting
+    -- Check time since last SUCCESS, not last attempt.
+    IF NOT p_force 
+       AND (v_state.owner_id IS DISTINCT FROM p_owner_id)
+       AND (v_state.last_success_at IS NOT NULL)
+       AND (v_now - v_state.last_success_at < v_throttle_interval) THEN
+         RETURN jsonb_build_object(
+            'allowed', false,
+            'reason', 'THROTTLED',
+            'next_run_at', v_state.last_success_at + v_throttle_interval
+        );
+    END IF;
+
+    -- 4. GRANT LEASE
+    v_start_block := v_state.last_synced_block;
+    
+    UPDATE indexer_state 
+    SET locked_until = v_now + v_lease_duration,
+        owner_id = p_owner_id,
+        updated_at = v_now,
+        last_attempt_at = v_now,
+        leased_from_block = v_start_block,
+        leased_to_block = v_start_block + p_batch_size - 1
+    WHERE key = p_key AND chain_id = p_chain_id;
+
+    RETURN jsonb_build_object(
+        'allowed', true,
+        'start_block', v_start_block,
+        'lease_expiry', v_now + v_lease_duration
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- 5. Atomic Ingestion RPC (Updated with Crash Safety & Lease Enforcement)
 CREATE OR REPLACE FUNCTION ingest_contributor_events(
     p_chain_id INT,
     p_key VARCHAR,
-    p_new_cursor BIGINT,
+    p_new_cursor BIGINT, -- Kept for API signature compat, but ignored for empty batches now
     p_events JSONB
 ) RETURNS VOID AS $$
 DECLARE
     event_record JSONB;
+    v_max_event_block BIGINT;
+    v_final_cursor BIGINT;
+    v_state RECORD;
 BEGIN
+    -- 0. Get State & Validate Lease
+    SELECT * INTO v_state FROM indexer_state 
+    WHERE key = p_key AND chain_id = p_chain_id FOR UPDATE;
+
+    IF v_state IS NULL THEN 
+        RAISE EXCEPTION 'Indexer state missing'; 
+    END IF;
+
+    IF v_state.leased_to_block IS NULL THEN
+        RAISE EXCEPTION 'No active lease found';
+    END IF;
+
+    -- 1. Ingest Events
     FOR event_record IN SELECT * FROM jsonb_array_elements(p_events)
     LOOP
+        -- [SAFETY] Strictly Enforce Lease Range
+        IF (event_record->>'block_number')::BIGINT > v_state.leased_to_block THEN
+            RAISE EXCEPTION 'Security: Event block % exceeds leased range %', 
+                (event_record->>'block_number'), v_state.leased_to_block;
+        END IF;
+
         INSERT INTO contributor_events (
             chain_id, tx_hash, log_index, block_number, block_timestamp,
-            donor_address, amount_wei, message
+            donor_address, amount_wei, is_anonymous, message
         ) VALUES (
             p_chain_id,
             (event_record->>'tx_hash')::VARCHAR,
@@ -249,17 +359,66 @@ BEGIN
             (event_record->>'block_timestamp')::TIMESTAMP,
             (event_record->>'donor_address')::VARCHAR,
             (event_record->>'amount_wei')::NUMERIC,
+            COALESCE((event_record->>'is_anonymous')::BOOLEAN, FALSE),
              event_record->>'message'
         )
         ON CONFLICT (chain_id, tx_hash, log_index) DO NOTHING;
     END LOOP;
 
-    INSERT INTO indexer_state (key, chain_id, last_synced_block, updated_at)
-    VALUES (p_key, p_chain_id, p_new_cursor, NOW())
-    ON CONFLICT (key, chain_id)
-    DO UPDATE SET last_synced_block = p_new_cursor, updated_at = NOW();
+    -- 2. Calculate Strict Cursor
+    -- If events exist: Cursor = MAX(Block) + 1.
+    -- If no events: Cursor = leased_to_block + 1 (Trust DB, not Worker).
+    SELECT MAX((x->>'block_number')::BIGINT) INTO v_max_event_block
+    FROM jsonb_array_elements(p_events) x;
+
+    IF v_max_event_block IS NOT NULL THEN
+        v_final_cursor := v_max_event_block + 1;
+    ELSE
+        v_final_cursor := v_state.leased_to_block + 1;
+    END IF;
+
+    -- 3. Update State & Release Lock
+    UPDATE indexer_state
+    SET last_synced_block = GREATEST(last_synced_block, v_final_cursor),
+        last_success_at = NOW(),
+        locked_until = NULL, -- Unlock
+        owner_id = NULL,
+        leased_from_block = NULL, -- Clear lease context
+        leased_to_block = NULL,
+        updated_at = NOW()
+    WHERE key = p_key AND chain_id = p_chain_id;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- [SECURITY] Vital: Prevent public/anon users from calling this RPC
+REVOKE EXECUTE ON FUNCTION ingest_contributor_events(INT, VARCHAR, BIGINT, JSONB) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION ingest_contributor_events(INT, VARCHAR, BIGINT, JSONB) FROM anon;
+REVOKE EXECUTE ON FUNCTION ingest_contributor_events(INT, VARCHAR, BIGINT, JSONB) FROM authenticated;
+
+REVOKE EXECUTE ON FUNCTION claim_indexer_scan(INT, VARCHAR, VARCHAR, BOOLEAN, INT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION claim_indexer_scan(INT, VARCHAR, VARCHAR, BOOLEAN, INT) FROM anon;
+REVOKE EXECUTE ON FUNCTION claim_indexer_scan(INT, VARCHAR, VARCHAR, BOOLEAN, INT) FROM authenticated;
+
+-- -----------------------------------------------------------------------------
+-- OBSERVABILITY VIEW
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW indexer_health AS
+SELECT
+  key,
+  chain_id,
+  last_synced_block,
+  last_success_at,
+  locked_until,
+  owner_id,
+  leased_from_block AS current_lease_start,
+  leased_to_block AS current_lease_end,
+  NOW() - last_success_at AS lag,
+  CASE 
+    WHEN locked_until > NOW() THEN 'LOCKED / RUNNING'
+    WHEN NOW() - last_success_at > interval '6 hours' THEN 'DELAYED'
+    ELSE 'HEALTHY'
+  END AS status
+FROM indexer_state;
 
 -- -----------------------------------------------------------------------------
 -- ROW LEVEL SECURITY (RLS)

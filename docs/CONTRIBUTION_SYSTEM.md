@@ -77,8 +77,8 @@ Instead of constant polling, the system now uses an **Event-Driven / Hybrid Appr
 The database handles the heavy lifting of calculating totals automatically.
 - **File**: `packages/database/migrations/schema.sql`
 - **Tables**:
-    - `contributor_events`: An immutable log of every single donation ever made.
-    - `contributors`: A summary table that stores the current totals for each user.
+    - `contributor_events`: An immutable log of every single donation ever made (including `is_anonymous`).
+    - `contributors`: A summary table that stores the current totals for each user (respecting `is_anonymous`).
 - **Trigger Logic**:
     - A PostgreSQL Trigger (`trg_update_contributors`) listens for new rows in `contributor_events`.
     - When a new event arrives, it automatically updates the `contributors` table:
