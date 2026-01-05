@@ -4,46 +4,43 @@ import { supabase } from '../lib/supabase';
 // --- Configuration ---
 const VAULT_ADDRESS = process.env.NEXT_PUBLIC_SUPPORT_VAULT_ADDRESS || "0x8a9496cdffd16250353ea19b1ff8ce4de4c294cf";
 const CHAIN_ID = process.env.NEXT_PUBLIC_CHAIN_ID ? parseInt(process.env.NEXT_PUBLIC_CHAIN_ID) : 8453; // Default Base Mainnet
-const BATCH_SIZE = 10; // Strict limit for free tier (inclusive range)
-// POLLING is handled by Cron or Trigger, not internal loop.
+
+// Production Defaults
+const PROD_BATCH_SIZE = 10;
+const PROD_TIME_LIMIT_MS = 50 * 1000;
+
+// Backfill Dynamic Config
+const BF_MIN_BATCH = 10;
+const BF_MAX_BATCH = 10_000;
+const BF_TARGET_BATCH_COUNT = 50;
 
 const SUPPORT_VAULT_ABI = [
     "event Contributed(address indexed contributor, address indexed token, uint256 amount, bool isAnonymous, uint256 timestamp)"
 ];
 
 interface SyncOptions {
-    force?: boolean; // If true, ignore lock (careful!) - mostly for dev or stuck locks
+    force?: boolean;
+    backfill?: boolean;
 }
 
 export class IndexerService {
-    private provider: ethers.AbstractProvider; // Changed to support Fallback
+    private provider: ethers.AbstractProvider;
     private contract: ethers.Contract | null = null;
     private ownerId: string;
 
     constructor() {
-        // [RPC CONFIG] Simple, clean initialization (Enterprise Fix)
-        // Disable staticNetwork to allow Ethers to auto-detect and lock the correctly chain.
-        // If BASE_RPC_URL is provided, use it; otherwise default to Base Mainnet.
         const url = process.env.BASE_RPC_URL || "https://mainnet.base.org";
         this.provider = new ethers.JsonRpcProvider(url);
-
-        // Unique ID for this instance (stateless execution)
         this.ownerId = `worker-${Math.random().toString(36).substring(7)}`;
     }
 
-    /**
-     * Stateless Sync Function
-     * Designed to be called by Cron (6hr) or User Trigger (Immediate)
-     * 
-     * NOTE: This design currently supports Single-Worker Mutual Exclusion.
-     * Parallel indexing requires future implementation of block-range partitioning.
-     */
     public async sync(options: SyncOptions = {}) {
-        const { force = false } = options;
-        // console.log(`[Indexer] Req: ${this.ownerId}, Force: ${force}`); // Verbose off
+        // 1. Determine Mode
+        const isBackfill = options.backfill || process.env.INDEXER_MODE === 'backfill';
+        const force = isBackfill ? true : (options.force || false);
 
         if (!VAULT_ADDRESS || !ethers.isAddress(VAULT_ADDRESS)) {
-            console.error(`[Indexer] ABORT: Invalid VAULT_ADDRESS (${VAULT_ADDRESS})`);
+            console.error(`[Indexer] ABORT: Invalid VAULT_ADDRESS`);
             return;
         }
 
@@ -51,37 +48,7 @@ export class IndexerService {
             this.contract = new ethers.Contract(VAULT_ADDRESS, SUPPORT_VAULT_ABI, this.provider);
         }
 
-        // 1. Claim Lease (Atomic DB Locking + Throttling)
-        const { data: lease, error: leaseError } = await supabase.rpc('claim_indexer_scan', {
-            p_chain_id: CHAIN_ID,
-            p_key: 'contributors_sync',
-            p_owner_id: this.ownerId,
-            p_force: force,
-            p_batch_size: BATCH_SIZE
-        });
-
-        if (leaseError) throw leaseError;
-
-        if (!lease || !lease.allowed) {
-            console.warn(`[Indexer] Skipped: ${lease?.reason || 'Denied'} (Next: ${lease?.next_run_at || 'N/A'}, LockedUntil: ${lease?.locked_until || 'N/A'})`);
-            return;
-        }
-
-        const startBlock = BigInt(lease.start_block);
-
-        // 2. Loop until caught up or time limit reached (e.g. 50s for serverless)
-        const TIME_LIMIT_MS = 50 * 1000;
-        const startTime = Date.now();
-        let loopCount = 0;
-
-        // Lease is for the *run*, but we update cursor incrementally.
-        // We need to be careful with the "Throttle" check. 
-        // If we acquired the lock, we own it.
-
-        // Initial fetched block (already have it from lease)
-        let currentBlockVal = Number(startBlock);
-
-        // Fetch Latest Block once
+        // 2. Fetch Latest Block (Once at start to define the goal)
         let latestBlock: number;
         try {
             latestBlock = await this.provider.getBlockNumber();
@@ -90,65 +57,70 @@ export class IndexerService {
             return;
         }
 
-        console.log(`[Indexer] Starting sync. Cursor: ${currentBlockVal}, Target: ${latestBlock}, Batch: ${BATCH_SIZE}`);
+        // 3. Initial Claim (Get Lock & Cursor)
+        // For backfill, we start with a safe Max to secure a wide lock if possible, 
+        // though the loop will refine usage.
+        const initialBatch = isBackfill ? BF_MAX_BATCH : PROD_BATCH_SIZE;
+
+        const { data: lease, error: leaseError } = await supabase.rpc('claim_indexer_scan', {
+            p_chain_id: CHAIN_ID,
+            p_key: 'contributors_sync',
+            p_owner_id: this.ownerId,
+            p_force: force,
+            p_batch_size: initialBatch
+        });
+
+        if (leaseError) throw leaseError;
+
+        if (!lease || !lease.allowed) {
+            if (isBackfill) console.warn(`[Indexer] Backfill lock denied: ${lease?.reason}`);
+            else console.warn(`[Indexer] Skipped: ${lease?.reason || 'Denied'}`);
+            return;
+        }
+
+        // 4. Execution Loop
+        let currentBlockVal = Number(lease.start_block);
+        const startTime = Date.now();
+        let loopCount = 0;
+
+        console.log(`[Indexer] Started ${isBackfill ? 'BACKFILL' : 'SYNC'}. Cursor: ${currentBlockVal}, Target: ${latestBlock}`);
 
         while (currentBlockVal < latestBlock) {
-            // Check Timeout
-            if (Date.now() - startTime > TIME_LIMIT_MS) {
+            // A. Check Time Bounds (Production Only)
+            if (!isBackfill && (Date.now() - startTime > PROD_TIME_LIMIT_MS)) {
                 console.log(`[Indexer] Time limit reached (${loopCount} batches). Yielding.`);
                 break;
             }
 
-            let toBlock = currentBlockVal + BATCH_SIZE - 1;
+            // B. Calculate Dynamic Batch Size
+            let currentBatchSize = PROD_BATCH_SIZE;
+
+            if (isBackfill) {
+                const lag = latestBlock - currentBlockVal;
+                // Formula: batch = min(MAX, max(MIN, lag / TARGET))
+                // effectively splits the remaining work into ~50 chunks, bounded by safe limits
+                const dynamicSize = Math.ceil(lag / BF_TARGET_BATCH_COUNT);
+                currentBatchSize = Math.min(BF_MAX_BATCH, Math.max(BF_MIN_BATCH, dynamicSize));
+            }
+
+            // C. Define Range
+            let toBlock = currentBlockVal + currentBatchSize - 1;
             if (toBlock > latestBlock) toBlock = latestBlock;
 
-            // 3. Fetch Logs
             try {
+                // D. Fetch Logs
                 const filter = this.contract.filters.Contributed();
                 const events = await this.contract.queryFilter(filter, currentBlockVal, toBlock);
 
                 if (events.length > 0) {
-                    console.log(`[Indexer] Found ${events.length} events in range ${currentBlockVal}-${toBlock}`);
+                    console.log(`[Indexer] Found ${events.length} events in range ${currentBlockVal}-${toBlock} (size: ${currentBatchSize})`);
                 }
 
-                // 4. Process (Fetch Timestamps)
+                // E. Process
                 const eventPayload = await this.processEvents(events);
 
-                // 5. Commit & Unlock (Incremental)
+                // F. Ingest (Updates Cursor)
                 const newCursor = toBlock + 1;
-
-                // We update the DB state *every batch* to save progress.
-                // We keep the owner_id so we don't lose the lock (if we wanted to keep it).
-                // But `ingest_contributor_events` currently clears the lock.
-                // We should probably modify `ingest_contributor_events` or just accept that we re-acquire?
-                // Actually, `ingest_contributor_events` clears `locked_until`.
-                // If we want to loop, we should probably conceptually "extend" the lease or just quickly re-grab?
-                // Re-grabbing might hit the throttle if we finished successfully.
-
-                // Hack for now: The previous implementation unlocked at the end. 
-                // Since `ingest_contributor_events` unlocks, we will lose the lock after the first batch.
-                // This defeats the point of the loop if we can't write.
-
-                // Let's use a modified ingest that DOES NOT unlock if we plan to continue?
-                // Or simply: Call `claim_indexer_scan` again? 
-                // But `claim_indexer_scan` will throttle us because `last_success_at` was just updated!
-
-                // FIX: We need to update the cursor WITHOUT setting `last_success_at` or clearing lock until the VERY END.
-                // However, `ingest_contributor_events` is a "do all" RPC.
-
-                // STRATEGY CHANGE: 
-                // We will Aggregate ALL events in memory? No, memory risk.
-                // We will use standard update but pass a flag? 
-                // Given constraints, I will rely on the `sync` function changing to only call `ingest` at the end? 
-                // No, if it crashes after 40 batches we lose progress.
-
-                // Better Strategy:
-                // Commit batches, but bypass throttle on subsequent loop iterations?
-                // We can't simply bypass throttle without `force=true`.
-                // But we are inside the service.
-
-                // Let's just USE `force=true` for internal loop iterations specifically.
-
                 const { error: ingestError } = await supabase.rpc('ingest_contributor_events', {
                     p_chain_id: CHAIN_ID,
                     p_key: 'contributors_sync',
@@ -158,51 +130,37 @@ export class IndexerService {
 
                 if (ingestError) throw ingestError;
 
-                // Move forward
                 currentBlockVal = newCursor;
                 loopCount++;
 
-                // If we want to continue, we need to implicitly "claim" again for the next batch.
-                // But `ingest` unlocked it.
-                // So next iteration needs to re-claim.
-                // We set `force=true` for the subsequent re-claims to bypass our own "just success" throttle.
-
-                // Small sleep to be nice to RPC
-                await new Promise(r => setTimeout(r, 200));
-
-                // Re-prepare for next loop:
+                // G. Re-Claim / Extend Lock for Next Iteration
+                // Essential for multiple loops. We use the *Next* calculated batch size effectively?
+                // Or just maintain the lock. We pass `force=true` in backfill to ensure we keep going.
                 if (currentBlockVal < latestBlock) {
-                    // Re-claim immediately to continue
                     const { data: nextLease } = await supabase.rpc('claim_indexer_scan', {
                         p_chain_id: CHAIN_ID,
                         p_key: 'contributors_sync',
                         p_owner_id: this.ownerId,
-                        p_force: true, // Internal loop forces continuation
-                        p_batch_size: BATCH_SIZE
+                        p_force: isBackfill ? true : false, // Prod respects initial force setting (usually false)
+                        p_batch_size: currentBatchSize
                     });
+
                     if (!nextLease || !nextLease.allowed) {
-                        console.warn("[Indexer] Lost lock during loop. Stopping.");
+                        console.warn("[Indexer] Lock lost during sync. Stopping.");
                         break;
                     }
                 }
 
+                // H. Rate Limit / Nice-ness
+                await new Promise(r => setTimeout(r, isBackfill ? 50 : 200));
+
             } catch (err) {
                 console.error(`[Indexer] FAILED range ${currentBlockVal}->${toBlock}:`, err);
-                // If fail, we break loop and wait for next cron
                 break;
             }
         }
 
-        console.log(`[Indexer] Batch run finished. Processed ${loopCount} batches.`);
-    }
-
-    private async releaseLock(currentCursor: number) {
-        await supabase.rpc('ingest_contributor_events', {
-            p_chain_id: CHAIN_ID,
-            p_key: 'contributors_sync',
-            p_new_cursor: currentCursor,
-            p_events: []
-        });
+        console.log(`[Indexer] Run finished. Processed ${loopCount} batches.`);
     }
 
     private async processEvents(events: Array<ethers.EventLog | ethers.Log>): Promise<any[]> {
