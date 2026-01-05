@@ -765,7 +765,7 @@ export class BillService {
         return {
             BILL_ID: forcedBillId || `BILL-${chainId}-${receipt.blockNumber}-${tx.hash.slice(0, 6)}`,
             BILL_VERSION: "2.6.0 (Enterprise)",
-            GENERATED_AT: now.toLocaleString(),
+            GENERATED_AT: now.toLocaleString('en-US', { timeZoneName: 'short' }),
             STATUS: receipt.status === 1 ? "confirmed" : "failed",
             STATUS_CONFIRMED: receipt.status === 1,
             CHAIN_NAME: this.getChainName(chainId),
@@ -776,7 +776,7 @@ export class BillService {
             TRANSACTION_HASH: tx.hash,
             BLOCK_NUMBER: receipt.blockNumber.toLocaleString(),
             BLOCK_HASH_SHORT: `${receipt.blockHash.slice(0, 10)}...`,
-            TIMESTAMP: txDate.toLocaleString(),
+            TIMESTAMP: txDate.toLocaleString('en-US', { timeZoneName: 'short' }),
             TIMESTAMP_RELATIVE: this.getRelativeTime(txDate),
             CONFIRMATIONS: 12,
             TYPE: classification.functionalType,

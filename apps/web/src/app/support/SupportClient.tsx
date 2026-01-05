@@ -1,11 +1,11 @@
 'use client';
 
 import { Navbar } from '@/components/Navbar';
-import { motion } from 'framer-motion';
-import { Wallet, Shield, Zap, Globe, Heart, ArrowRight, User, Loader2 } from 'lucide-react';
-import { useAccount, useWriteContract, useSwitchChain, useChainId } from 'wagmi';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Wallet, Shield, Zap, Globe, Heart, ArrowRight, User, Loader2, ChevronDown } from 'lucide-react';
+import { useAccount, useWriteContract, useSwitchChain, useChainId, useReadContract } from 'wagmi';
 import { RefreshCw } from 'lucide-react'; // Import Refresh Icon
-import { parseEther } from 'viem';
+import { parseEther, parseUnits } from 'viem';
 // Removed AppKit imports
 import { base } from 'wagmi/chains';
 import { useState, useEffect } from 'react';
@@ -25,10 +25,33 @@ const ROADMAP_ITEMS = [
     { status: 'Planned', title: 'DAO Governance', desc: 'Community voting on future features.' },
 ];
 
+// --- Types & Config ---
+type Token = {
+    symbol: string;
+    name: string;
+    address: `0x${string}`; // Use zero address for native ETH
+    decimals: number;
+    isNative: boolean;
+};
+
+const NATIVE_ETH_ADDRESS = '0x0000000000000000000000000000000000000000';
+const SUPPORTED_TOKENS: Token[] = [
+    { symbol: 'ETH', name: 'Ethereum', address: NATIVE_ETH_ADDRESS, decimals: 18, isNative: true },
+    { symbol: 'USDC', name: 'USD Coin', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6, isNative: false },
+    // Add more tokens here easily
+];
+
+// Default Token
+const DEFAULT_TOKEN = SUPPORTED_TOKENS[0];
+
 export default function SupportClient() {
     const { address, isConnected } = useAccount();
-    // Removed useAppKit
+
+    // State
     const [contributionAmount, setContributionAmount] = useState('');
+    const [selectedToken, setSelectedToken] = useState<Token>(DEFAULT_TOKEN);
+    const [isApproving, setIsApproving] = useState(false);
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [isAnonymous, setIsAnonymous] = useState(false);
     const [topContributors, setTopContributors] = useState<any[]>([]);
     const [mounted, setMounted] = useState(false);
@@ -61,11 +84,58 @@ export default function SupportClient() {
 
     // Minimal ABI for contribution
     const VAULT_ABI = [
-        { inputs: [{ internalType: 'bool', name: 'isAnonymous', type: 'bool' }], name: 'contributeNative', outputs: [], stateMutability: 'payable', type: 'function' }
+        { inputs: [{ internalType: 'bool', name: 'isAnonymous', type: 'bool' }], name: 'contributeNative', outputs: [], stateMutability: 'payable', type: 'function' },
+        { inputs: [{ internalType: 'address', name: 'token', type: 'address' }, { internalType: 'uint256', name: 'amount', type: 'uint256' }, { internalType: 'bool', name: 'isAnonymous', type: 'bool' }], name: 'contributeERC20', outputs: [], stateMutability: 'nonpayable', type: 'function' }
     ] as const;
+
+    const ERC20_ABI = [
+        { name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ name: '', type: 'bool' }] },
+        { name: 'allowance', type: 'function', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], outputs: [{ name: '', type: 'uint256' }] },
+        { name: 'decimals', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint8' }] }
+    ] as const;
+
 
     const VAULT_ADDRESS = process.env.NEXT_PUBLIC_SUPPORT_VAULT_ADDRESS as `0x${string}`;
     const TARGET_CHAIN_ID = base.id;
+
+    // Read allowance
+    const { data: allowance, refetch: refetchAllowance } = useReadContract({
+        address: selectedToken.address,
+        abi: ERC20_ABI,
+        functionName: 'allowance',
+        args: [address as `0x${string}`, VAULT_ADDRESS],
+        query: { enabled: !!address && !selectedToken.isNative && !!VAULT_ADDRESS }
+    });
+
+    // Check if approval needed
+    const needsApproval = !selectedToken.isNative && contributionAmount && !isNaN(Number(contributionAmount)) &&
+        (allowance === undefined || allowance < parseUnits(contributionAmount, selectedToken.decimals));
+
+    const handleApprove = async () => {
+        if (!isConnected || !VAULT_ADDRESS || selectedToken.isNative) return;
+        try {
+            setIsApproving(true);
+            const amountToApprove = parseUnits(contributionAmount, selectedToken.decimals);
+            const hash = await writeContractAsync({
+                address: selectedToken.address,
+                abi: ERC20_ABI,
+                functionName: 'approve',
+                args: [VAULT_ADDRESS, amountToApprove],
+                chainId: TARGET_CHAIN_ID
+            });
+            toast.info(`Approving ${selectedToken.symbol}...`, { description: "Waiting for confirmation" });
+
+            // Wait for confirmation (simplified delay for now)
+            await new Promise(r => setTimeout(r, 4000));
+            await refetchAllowance();
+            toast.success("Approved!");
+        } catch (err: any) {
+            console.error("Approval failed", err);
+            toast.error("Approval Failed", { description: err.message });
+        } finally {
+            setIsApproving(false);
+        }
+    };
 
     const handleContribute = async () => {
         if (!isConnected) {
@@ -74,7 +144,7 @@ export default function SupportClient() {
         }
 
         if (!contributionAmount || isNaN(Number(contributionAmount))) {
-            toast.error("Invalid Amount", { description: "Please enter a valid ETH amount" });
+            toast.error("Invalid Amount", { description: `Please enter a valid ${selectedToken.symbol} amount` });
             return;
         }
 
@@ -105,14 +175,27 @@ export default function SupportClient() {
 
         try {
             setIsPending(true);
-            const hash = await writeContractAsync({
-                address: VAULT_ADDRESS,
-                abi: VAULT_ABI,
-                functionName: 'contributeNative',
-                args: [isAnonymous], // Use state
-                value: parseEther(contributionAmount),
-                chainId: TARGET_CHAIN_ID, // [FIX] Explicitly bind to correct chain to prevent connector ambiguities
-            });
+            let hash;
+
+            if (selectedToken.isNative) {
+                hash = await writeContractAsync({
+                    address: VAULT_ADDRESS,
+                    abi: VAULT_ABI,
+                    functionName: 'contributeNative',
+                    args: [isAnonymous],
+                    value: parseEther(contributionAmount),
+                    chainId: TARGET_CHAIN_ID,
+                });
+            } else {
+                // ERC20 Contribution
+                hash = await writeContractAsync({
+                    address: VAULT_ADDRESS,
+                    abi: VAULT_ABI,
+                    functionName: 'contributeERC20',
+                    args: [selectedToken.address, parseUnits(contributionAmount, selectedToken.decimals), isAnonymous],
+                    chainId: TARGET_CHAIN_ID
+                });
+            }
 
             toast.success("Contribution Successful!", {
                 id: toastId,
@@ -234,9 +317,46 @@ export default function SupportClient() {
                                         onChange={(e) => setContributionAmount(e.target.value)}
                                         className="bg-transparent text-3xl font-bold text-white outline-none w-full placeholder:text-zinc-700"
                                     />
-                                    <span className="text-sm font-bold bg-white/10 px-3 py-1.5 rounded-lg text-zinc-300">ETH</span>
+                                    {/* Scalable Token Dropdown */}
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                                            className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-3 py-2 rounded-xl transition-all border border-white/5"
+                                        >
+                                            <span className="text-sm font-bold text-white">{selectedToken.symbol}</span>
+                                            <ChevronDown size={14} className={`text-zinc-400 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                                        </button>
+
+                                        <AnimatePresence>
+                                            {isDropdownOpen && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                    className="absolute top-full right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden"
+                                                >
+                                                    <div className="p-2 space-y-1">
+                                                        {SUPPORTED_TOKENS.map((token) => (
+                                                            <button
+                                                                key={token.symbol}
+                                                                onClick={() => {
+                                                                    setSelectedToken(token);
+                                                                    setIsDropdownOpen(false);
+                                                                }}
+                                                                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${selectedToken.symbol === token.symbol ? 'bg-violet-600/20 text-violet-300' : 'hover:bg-white/5 text-zinc-300'}`}
+                                                            >
+                                                                <span className="font-bold">{token.symbol}</span>
+                                                                <span className="text-xs text-zinc-500">{token.name}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
                                 </div>
                             </div>
+
 
                             {/* Anonymous Toggle */}
                             <div className="flex items-center gap-3 bg-black/20 p-4 rounded-xl border border-white/5 cursor-pointer hover:bg-black/30 transition-colors" onClick={() => setIsAnonymous(!isAnonymous)}>
@@ -249,14 +369,26 @@ export default function SupportClient() {
                                 </div>
                             </div>
 
-                            <button
-                                onClick={handleContribute}
-                                disabled={isPending}
-                                className="w-full flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-6 py-4 font-bold text-white transition-all hover:bg-violet-500 hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-violet-600/20 disabled:opacity-70 disabled:cursor-not-allowed"
-                            >
-                                {isPending ? <Loader2 className="animate-spin" /> : (mounted && isConnected ? 'Confirm Contribution' : 'Connect Wallet to Support')}
-                                {!isPending && <ArrowRight size={18} />}
-                            </button>
+                            <div className="flex gap-4">
+                                {needsApproval && (
+                                    <button
+                                        onClick={handleApprove}
+                                        disabled={isApproving}
+                                        className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-4 font-bold text-white transition-all hover:bg-blue-500 hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-600/20 disabled:opacity-70 disabled:cursor-not-allowed"
+                                    >
+                                        {isApproving ? <Loader2 className="animate-spin" /> : `Approve ${selectedToken.symbol}`}
+                                    </button>
+                                )}
+                                <button
+                                    onClick={handleContribute}
+                                    disabled={isPending || isApproving || !!needsApproval}
+                                    className={`flex-1 flex items-center justify-center gap-2 rounded-xl px-6 py-4 font-bold text-white transition-all shadow-lg disabled:opacity-70 disabled:cursor-not-allowed ${needsApproval ? 'bg-zinc-700 text-zinc-400' : 'bg-violet-600 hover:bg-violet-500 hover:scale-[1.02] active:scale-[0.98] shadow-violet-600/20'}`}
+                                >
+                                    {isPending ? <Loader2 className="animate-spin" /> : (mounted && isConnected ? (needsApproval ? 'Waiting for Approval' : 'Confirm Contribution') : 'Connect Wallet to Support')}
+                                    {(!isPending && !needsApproval) && <ArrowRight size={18} />}
+                                </button>
+                            </div>
+
                             <p className="text-center text-xs text-zinc-500">
                                 Supports Native ETH on Base Mainnet.
                             </p>
