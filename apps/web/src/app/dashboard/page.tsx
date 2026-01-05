@@ -35,7 +35,7 @@ export default function DashboardPage() {
     const chainId = useChainId();
     const [token, setToken] = useState<string | null>(null);
     const [hasHydrated, setHasHydrated] = useState(false);
-    const [activeTab, setActiveTab] = useState<'ads' | 'vault'>('ads');
+    const [activeTab, setActiveTab] = useState<'ads' | 'vault' | 'contributions'>('ads');
     const [isAdmin, setIsAdmin] = useState(false);
 
     // Ads Data State
@@ -346,7 +346,6 @@ export default function DashboardPage() {
                     </div>
                 </div>
 
-                {/* Tab Switcher */}
                 <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 w-fit backdrop-blur-md mb-8">
                     <button
                         onClick={() => setActiveTab('ads')}
@@ -356,7 +355,7 @@ export default function DashboardPage() {
                             }`}
                     >
                         <Megaphone size={16} />
-                        Ads Management
+                        Ads
                     </button>
                     <button
                         onClick={() => setActiveTab('vault')}
@@ -366,7 +365,17 @@ export default function DashboardPage() {
                             }`}
                     >
                         <Shield size={16} />
-                        Vault Management
+                        Vault
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('contributions')}
+                        className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'contributions'
+                            ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/25'
+                            : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                            }`}
+                    >
+                        <Search size={16} />
+                        Contributions
                     </button>
                 </div>
 
@@ -779,7 +788,157 @@ export default function DashboardPage() {
                         )}
                     </>
                 )}
+                {activeTab === 'contributions' && (
+                    <ContributionsPanel token={token} apiUrl={process.env.NEXT_PUBLIC_API_URL} />
+                )}
             </main>
+        </div>
+    );
+}
+
+function ContributionsPanel({ token, apiUrl }: { token: string | null, apiUrl?: string }) {
+    const [txHash, setTxHash] = useState('');
+    const [statusResult, setStatusResult] = useState<any>(null);
+    const [loading, setLoading] = useState(false);
+
+    const handleVerify = async () => {
+        if (!txHash) return;
+        setLoading(true);
+        try {
+            const res = await axios.post(`${apiUrl}/api/contributions/submit`, { txHash, isAnonymous: false });
+            toast.success("Submitted", { description: res.data.message });
+            handleCheckStatus();
+        } catch (err: any) {
+            console.error(err);
+            toast.error("Submission failed", { description: err.message });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCheckStatus = async () => {
+        if (!txHash) return;
+        setLoading(true);
+        setStatusResult(null);
+        try {
+            const res = await axios.get(`${apiUrl}/api/contributions/status/${txHash}`);
+            setStatusResult(res.data);
+            toast.success("Status retrieved");
+        } catch (err: any) {
+            console.error(err);
+            if (err.response?.status === 404) {
+                setStatusResult({ found: false, message: "Not found in system." });
+            } else {
+                toast.error("Check failed");
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="bg-white/5 rounded-3xl border border-white/10 p-8 backdrop-blur-md">
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2.5 rounded-xl bg-orange-500/10 text-orange-400">
+                        <Search size={24} />
+                    </div>
+                    <h2 className="text-xl font-bold">Inspect Transaction</h2>
+                </div>
+
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 pl-1">Transaction Hash</label>
+                        <input
+                            type="text"
+                            placeholder="0x..."
+                            value={txHash}
+                            onChange={(e) => setTxHash(e.target.value)}
+                            className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-orange-500 transition-all font-mono text-sm"
+                        />
+                    </div>
+                    <div className="flex gap-4">
+                        <button
+                            onClick={handleCheckStatus}
+                            disabled={loading || !txHash}
+                            className="flex-1 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold transition-all disabled:opacity-50"
+                        >
+                            {loading ? <Loader2 className="animate-spin mx-auto" /> : 'Check Status'}
+                        </button>
+                        <button
+                            onClick={handleVerify}
+                            disabled={loading || !txHash}
+                            className="flex-1 py-3 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold transition-all disabled:opacity-50 shadow-lg shadow-orange-600/20"
+                        >
+                            {loading ? <Loader2 className="animate-spin mx-auto" /> : 'Force Verify / Retry'}
+                        </button>
+                    </div>
+                </div>
+
+                {statusResult && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mt-6 p-6 bg-black/30 rounded-2xl border border-white/5 font-mono text-sm overflow-hidden"
+                    >
+                        {statusResult.found ? (
+                            <div className="space-y-2">
+                                <div className="flex justify-between">
+                                    <span className="text-zinc-500">Status:</span>
+                                    <span className={`font-bold uppercase ${statusResult.status === 'confirmed' ? 'text-green-400' :
+                                            statusResult.status === 'failed' ? 'text-red-400' : 'text-yellow-400'
+                                        }`}>{statusResult.status}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-zinc-500">Source:</span>
+                                    <span className="text-white">{statusResult.source}</span>
+                                </div>
+                                {statusResult.details?.last_error && (
+                                    <div className="pt-2 border-t border-white/10 mt-2 text-red-300">
+                                        Error: {statusResult.details.last_error}
+                                    </div>
+                                )}
+                                <div className="pt-2 border-t border-white/10 mt-2 text-xs text-zinc-600 break-all">
+                                    Last Updated: {statusResult.details?.updated_at || statusResult.details?.created_at}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-zinc-500 italic">
+                                {statusResult.message}
+                            </div>
+                        )}
+                    </motion.div>
+                )}
+            </div>
+
+            <div className="bg-white/5 rounded-3xl border border-white/10 p-8 backdrop-blur-md">
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-400">
+                        <Shield size={24} />
+                    </div>
+                    <h2 className="text-xl font-bold">Operational Guide</h2>
+                </div>
+                <div className="space-y-4 text-sm text-zinc-400">
+                    <p>
+                        The system now uses a <span className="text-white font-bold">Push-Based</span> architecture.
+                        Transactions are verified individually rather than scanned in blocks.
+                    </p>
+                    <ul className="list-disc pl-5 space-y-2">
+                        <li>
+                            <strong className="text-white">Pending:</strong> The system has seen the hash and is waiting for confirmations.
+                        </li>
+                        <li>
+                            <strong className="text-white">Confirmed:</strong> The event was successfully decoded and stored.
+                        </li>
+                        <li>
+                            <strong className="text-white">Failed:</strong> Verification failed (reverted, wrong contract, missing event).
+                        </li>
+                    </ul>
+                    <p className="pt-4 border-t border-white/5 mt-4">
+                        Use <strong>Force Verify</strong> if a user claims their contribution is missing.
+                    </p>
+                </div>
+            </div>
         </div>
     );
 }

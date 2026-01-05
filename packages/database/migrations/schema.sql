@@ -117,12 +117,12 @@ CREATE TABLE IF NOT EXISTS indexer_state (
     PRIMARY KEY (key, chain_id)
 );
 
--- Seed Initial Indexer State (Base Sepolia Deployment Block)
--- This prevents scanning 16M+ empty blocks if state is lost/reset.
+-- Seed Initial Indexer State
+-- [FIX] Use 0 (Genesis) or Deployment Block. Do NOT force update on conflict.
 INSERT INTO indexer_state (key, chain_id, last_synced_block)
-VALUES ('contributors_sync', 8453, 40367120)
+VALUES ('contributors_sync', 8453, 0)
 ON CONFLICT (key, chain_id) 
-DO UPDATE SET last_synced_block = EXCLUDED.last_synced_block;
+DO NOTHING;
 
 -- -----------------------------------------------------------------------------
 -- 7. INDEXER EVENTS (Immutable Log)
@@ -425,3 +425,27 @@ CREATE POLICY "Public can view ads" ON ad_profiles FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "Public can view contributors" ON contributors;
 CREATE POLICY "Public can view contributors" ON contributors FOR SELECT USING (true);
+
+-- -----------------------------------------------------------------------------
+-- 8. PENDING CONTRIBUTIONS (Push-Based Ingestion)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pending_contributions (
+    tx_hash VARCHAR(66) PRIMARY KEY,
+    chain_id INT NOT NULL DEFAULT 8453,
+    status VARCHAR(20) CHECK (status IN ('pending', 'confirmed', 'failed')),
+    retries INT DEFAULT 0,
+    last_error TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    confirmed_at TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index for retry worker
+CREATE INDEX IF NOT EXISTS idx_pending_status_created ON pending_contributions(status, created_at);
+
+-- Trigger to update timestamp
+DROP TRIGGER IF EXISTS pending_contributions_updated_at ON pending_contributions;
+CREATE TRIGGER pending_contributions_updated_at BEFORE UPDATE ON pending_contributions FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+-- Enable RLS
+ALTER TABLE pending_contributions ENABLE ROW LEVEL SECURITY;

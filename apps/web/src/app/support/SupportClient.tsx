@@ -120,12 +120,27 @@ export default function SupportClient() {
             });
             setContributionAmount('');
 
-            // [Event-Driven] Trigger Backend Indexer Immediately
+            // [Push-Based] Submit txHash to backend for verification
             try {
                 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-                await fetch(`${apiUrl}/api/v1/indexer/trigger`, { method: 'POST' });
-                toast.info("Indexing triggered...");
-            } catch (ignored) { console.error("Trigger failed", ignored); }
+                const res = await fetch(`${apiUrl}/api/contributions/submit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ txHash: hash, isAnonymous })
+                });
+
+                const data = await res.json();
+                console.log('[Contribution] Backend response:', data);
+
+                if (res.ok) {
+                    toast.info("Verifying...", { description: data.message });
+                } else {
+                    console.warn('[Contribution] Backend submission warning:', data);
+                }
+            } catch (err) {
+                console.error("Backend submission failed", err);
+                // Don't block UI, it might be retried or picked up later if we had a scanner
+            }
 
             // [Auto-Refresh] Wait for Indexer to process (5s is enough now due to trigger) then refresh list
             setTimeout(() => {

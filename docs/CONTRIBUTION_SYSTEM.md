@@ -1,111 +1,132 @@
 # Contribution System Architecture
 
-This document details how the Contribution System works, from the on-chain event to the frontend display.
+This document provides a comprehensive overview of the "Show Your Support" system, including the smart contract, push-based ingestion, legacy indexer, database, and frontend components.
 
-## System Overview Diagram
+## 1. System Overview
+
+The system allows users to contribute native ETH (Base Mainnet) to support the project. Contributions are tracked on-chain.
+**NEW (Enterprise):** Real-time ingestion is now "Push-Based". The frontend submits the transaction hash to the backend, which verifies the receipt against the blockchain node. The legacy indexer is reserved for historical catch-up only.
+
+### Architecture Diagram
 
 ```mermaid
 sequenceDiagram
     participant User
     participant Frontend as Website (SupportClient)
     participant Contract as SupportVault.sol
-    participant Indexer as IndexerService.ts
+    participant API as Next.js API (ContributionService)
+    participant RPC as Base RPC Node
     participant DB as Supabase (PostgreSQL)
-    participant API as Next.js API
 
     %% Contribution Flow
     Note over User, Contract: 1. Contribution Phase
     User->>Frontend: Connect Wallet & Click Contribute
     Frontend->>Contract: writeContract(contributeNative, amount)
-    Contract-->>User: Transaction Confirm
-    Contract->>Contract: Emit 'Contributed' Event
+    Contract-->>User: Transaction Confirm (txHash)
+    
+    %% Real-time Push
+    Note over Frontend, API: 2. Ingestion Phase (Push)
+    Frontend->>API: POST /api/contributions/submit { txHash }
+    API->>DB: INSERT pending_contributions (PENDING)
+    API-->>Frontend: 200 OK (Accepted)
 
-    %% Indexing Flow
-    Note over Indexer, DB: 2. Ingestion Phase (Async)
-    loop Every 10 Seconds
-        Indexer->>DB: Read 'indexer_state' (last_synced_block)
-        Indexer->>Contract: queryFilter('Contributed', start, end)
-        Contract-->>Indexer: Return Event Logs
-        Indexer->>Indexer: Fetch Block Timestamps
-        Indexer->>DB: RPC 'ingest_contributor_events' (Atomic)
+    %% Verification (Async)
+    Note over API, RPC: 3. Verification Phase
+    API->>RPC: getTransactionReceipt(txHash)
+    
+    alt Status Check
+        RPC-->>API: Receipt (Status: 1)
+        API->>RPC: Check Confirmations (>= 5 blocks)
+        API->>API: Decode 'Contributed' Event
+        API->>DB: INSERT contributor_events (Idempotent)
+        API->>DB: UPDATE pending_contributions (CONFIRMED)
+    else Reverted / Invalid
+        API->>DB: UPDATE pending_contributions (FAILED)
     end
 
     %% Aggregation Flow
-    Note over DB: 3. Aggregation Phase (Internal)
-    DB->>DB: INSERT into 'contributor_events'
+    Note over DB: 4. Aggregation Phase (Internal Trigger)
     DB->>DB: TRIGGER 'trg_update_contributors'
     DB->>DB: UPSERT into 'contributors' table
-    Note right of DB: Updates total_amount_wei<br/>& contribution_count
 
     %% Display Flow
-    Note over Frontend, API: 4. Display Phase
+    Note over Frontend, API: 5. Display Phase
     Frontend->>API: GET /api/contributors?type=top
-    API->>DB: SELECT * FROM contributors ORDER BY total DESC LIMIT 50
-    DB-->>API: Return Aggregated Data
-    API->>API: Mask Anonymous Users
-    API-->>Frontend: Return JSON
-    Frontend->>User: Update Leaderboard
+    API-->>Frontend: Return Leaderboard
 ```
 
-## Detailed Component Breakdown
+---
 
-### 1. The Smart Contract (`SupportVault.sol`)
-The source of truth is the blockchain.
-- **File**: `packages/contracts/contracts/SupportVault.sol`
-- **Function**: `contributeNative(bool isAnonymous)`
-- **Safety**: Enforces a minimum contribution amount and a cooldown period to prevent spam.
-- **Event**: Emits `Contributed(address contributor, address token, uint256 amount, bool isAnonymous, uint256 timestamp)`.
+## 2. Contribution Lifecycle
 
-### 3. **Event-Driven Indexer Service**  
-**Path:** `apps/api/src/services/IndexerService.ts`  
+Transactions move through three states in `pending_contributions`:
 
-Instead of constant polling, the system now uses an **Event-Driven / Hybrid Approach**:
-*   **Passive Mode (Default):** The indexer sleeps for **24 hours** to save RPC costs.  
-*   **On-Demand Trigger:** Exposes a `triggerSync()` method via the API.  
-*   **Workflow:**  
-    1.  User contributes on Frontend.  
-    2.  Frontend calls `POST /api/v1/indexer/trigger`.  
-    3.  Indexer wakes up immediately, fetches the new event, and updates the database.  
-    4.  Indexer goes back to sleep.  
+| Status | Description |
+| :--- | :--- |
+| **pending** | Transaction submitted, waiting for verification or confirmations (5 blocks). |
+| **confirmed** | Receipt verified, event decoded, and data ingested into `contributor_events`. |
+| **failed** | Invalid receipt, reverted tx, wrong contract, or no event found. |
 
-**Key Features:**
-*   **Smart Sync:** Only wakes up when needed or once a day.  
-*   **Atomic Ingestion:** Uses `rpc('ingest_contributor_events')` to ensure data consistency.
-*   **Resiliency:** If "Far Behind", it automatically switches to "Fast Sync" mode (no sleep) until caught up.
+### Enterprise Features
+*   **Idempotent:** Safe to retry submitting the same `txHash` multiple times.
+*   **Reorg Safe:** Requires 5 verifications (blocks on top) before confirming.
+*   **Audit Trail:** Errors are logged with codes (e.g., `FAILED_REVERTED`, `FAILED_WRONG_CONTRACT`).
+*   **Auto-Retry:** A background worker retries `pending` items that got stuck (up to 10 times).
 
-### 3. Database & Aggregation (`schema.sql`)
-The database handles the heavy lifting of calculating totals automatically.
-- **File**: `packages/database/migrations/schema.sql`
-- **Tables**:
-    - `contributor_events`: An immutable log of every single donation ever made (including `is_anonymous`).
-    - `contributors`: A summary table that stores the current totals for each user (respecting `is_anonymous`).
-- **Trigger Logic**:
-    - A PostgreSQL Trigger (`trg_update_contributors`) listens for new rows in `contributor_events`.
-    - When a new event arrives, it automatically updates the `contributors` table:
-        - If the user is new: Creates a new row.
-        - If the user exists: Adds the new amount to `total_amount_wei` and increments `contribution_count`.
-    - **Why?**: This makes reading the leaderboard extremely fast (O(1)) because the math is already done.
+---
 
-### 4. Ranking Logic (Who is Top Contributor?)
-- **Logic**: The ranking is purely based on the cumulative `total_amount_wei`.
-- **Query**: In `apps/web/src/app/api/contributors/route.ts`:
-  ```typescript
-  supabase.from('contributors')
-      .select('*')
-      .order('total_amount_wei', { ascending: false })
-      .limit(50);
-  ```
-4.  **Privacy Layer:**  
-    *   The Smart Contract accepts an `isAnonymous` boolean.  
-    *   Indexer saves this flag to the database.  
-    *   API returns `displayName: "Anonymous Supporter"` if the flag is true.  
-    *   Frontend allows users to toggle this preference before contributing.  
+## 3. Key Components & Files
 
-5.  **Dynamic Updates:**  
-    *   Frontend polls the API every 60 seconds.  
-    *   **Instant Feedback:** After a contribution, the frontend triggers the indexer and refreshes the list within 5 seconds.
+### A. API Layer (New)
+*   **Service:** [`apps/api/src/services/ContributionService.ts`](file:///e:/website%20development/GChain%20Receipt/apps/api/src/services/ContributionService.ts)
+    *   Handles receipt verification validation.
+*   **Endpoint:** `POST /api/contributions/submit`
+*   **Worker:** [`apps/api/scripts/retry_contributions.ts`](file:///e:/website%20development/GChain%20Receipt/apps/api/scripts/retry_contributions.ts)
 
-### 5. Frontend (`SupportClient.tsx`)
-- **File**: `apps/web/src/app/support/SupportClient.tsx`
-- **Action**: fetches data from `/api/contributors` on mount.
-- **Display**: Shows a Top 50 leaderboard using the pre-calculated data. Creates a transaction to the smart contract when the user donates.
+### B. Smart Contract Layer
+*   **File:** [`packages/contracts/contracts/SupportVault.sol`](file:///e:/website%20development/GChain%20Receipt/packages/contracts/contracts/SupportVault.sol)
+*   **Role:** Securely holds funds and emits `Contributed` events.
+
+### C. Database Layer
+*   **New Table:** `pending_contributions` (Tracks ingestion state).
+*   **Core Tables:** `contributor_events` (Immutable logs), `contributors` (Aggregated stats).
+*   **Legacy:** `indexer_state` (Only used by backfill indexer).
+
+### D. Legacy Indexer
+*   **File:** [`apps/api/src/services/IndexerService.ts`](file:///e:/website%20development/GChain%20Receipt/apps/api/src/services/IndexerService.ts)
+*   **Status:** **DEPRECATED for live traffic.** Use only for database reconstruction.
+
+---
+
+## 4. Operational Guide
+
+### Manual Verification
+To manually retry or verify a specific transaction hash:
+```bash
+# Force re-submit via CURL (Idempotent)
+curl -X POST http://localhost:3001/api/contributions/submit \
+     -H "Content-Type: application/json" \
+     -d '{"txHash": "0x..."}'
+```
+
+### Running the Retry Worker
+The worker should run systematically (e.g., via Cron every 5 minutes).
+```bash
+npx ts-node apps/api/scripts/retry_contributions.ts
+```
+
+### Legacy Backfill
+If the database is lost, use the legacy indexer to rebuild history:
+```bash
+npx ts-node apps/api/scripts/run_indexer.ts --backfill
+```
+
+---
+
+## 5. Troubleshooting (New Architecture)
+
+| Issue | Cause | Fix |
+|Str|Str|Str|
+| **Stuck in `pending`** | Not enough confirmations (<5 blocks) or RPC lag. | Wait or run `retry_contributions.ts`. |
+| **`failed` (FAILED_NO_EVENT)** | Transaction succeeded but `Contributed` event is missing. | Check if the tx was sent to correct proxy/contract. |
+| **`failed` (FAILED_WRONG_CONTRACT)** | `tx.to` does not match ENV `SUPPORT_VAULT_ADDRESS`. | Verify frontend ENV vs backend ENV. |

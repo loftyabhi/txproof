@@ -18,16 +18,19 @@ app.use(cors());
 app.use(express.json());
 
 import { supabase } from './lib/supabase';
-import { IndexerService } from './services/IndexerService';
+// import { IndexerService } from './services/IndexerService'; // MOVED TO LEGACY
+import contributionsRouter from './routes/contributions';
 
 // Start Background Services
-const indexer = new IndexerService();
-// indexer.start(); // REMOVED: Serverless/Request-driven only
+// const indexer = new IndexerService(); // DEPRECATED
 
 // Services
 const authService = new AuthService();
 const adminService = new AdminService();
 const billService = new BillService();
+
+// Register Routes
+app.use('/api/contributions', contributionsRouter);
 
 // Serve generated PDFs via Supabase Redirect
 app.get('/bills/:fileName', async (req: Request, res: Response) => {
@@ -142,25 +145,14 @@ app.get('/api/v1/bills/job/:id', async (req: Request, res: Response, next: NextF
     }
 });
 
-// 2.2 Trigger Indexer (Public but rate-limited by nature of cost)
+// 2.2 Trigger Indexer
+// [DEPRECATED] Indexer is now legacy/backfill only. 
+// Use apps/api/scripts/legacy/run_indexer.ts for manual syncs.
+/*
 app.post('/api/v1/indexer/trigger', async (req: Request, res: Response) => {
-    // Force call for user actions, manual triggers
-    // We purposefully don't await this if we want it background? 
-    // Actually, Vercel/Render might kill the process if we don't await. 
-    // Best practice for "Serverless-Safe": Await it, or use a proper Queue.
-    // For now, let's await it to ensure it runs at least one batch.
-    // Use ?force=true to override locks if needed.
-    const force = req.query?.force === 'true' || req.body?.force === true;
-
-    // We launch it in background if it takes too long? 
-    // API timeout is usually 10s-60s. Indexing 10 blocks is fast.
-    try {
-        await indexer.sync({ force });
-        res.json({ success: true, message: 'Indexer sync cycle completed' });
-    } catch (e: any) {
-        res.status(500).json({ error: e.message || "Indexer failed" });
-    }
+    res.status(410).json({ error: "Indexer is deprecated. Use push-based contribution flow." });
 });
+*/
 
 // 3. Admin Login
 app.post('/api/v1/auth/login', async (req: Request, res: Response, next: NextFunction) => {
