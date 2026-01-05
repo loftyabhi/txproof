@@ -7,7 +7,7 @@ const router = Router();
 const contributionService = new ContributionService();
 
 const submitSchema = z.object({
-    txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/, "Invalid Transaction Hash format"),
+    txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/, "Invalid Transaction Hash format").transform(val => val.toLowerCase()),
     isAnonymous: z.boolean().default(false)
 });
 
@@ -32,7 +32,7 @@ router.post('/submit', async (req: Request, res: Response, next: NextFunction) =
 // GET /status/:txHash - Check status of a contribution
 router.get('/status/:txHash', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { txHash } = req.params;
+        const txHash = req.params.txHash.toLowerCase();
 
         // Basic format check
         if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) {
@@ -40,6 +40,24 @@ router.get('/status/:txHash', async (req: Request, res: Response, next: NextFunc
             return; // Explicit return to avoid void type error
         }
 
+        // 1. Check Confirmed Events (Final State) first
+        const { data: confirmed } = await supabase
+            .from('contributor_events')
+            .select('*')
+            .eq('tx_hash', txHash)
+            .single();
+
+        if (confirmed) {
+            res.json({
+                found: true,
+                source: 'contributor_events', // Explicit source of truth
+                status: 'confirmed',
+                details: confirmed
+            });
+            return;
+        }
+
+        // 2. Check Pending/Logs (Intermediate State)
         const { data: pending } = await supabase
             .from('pending_contributions')
             .select('*')
@@ -50,24 +68,8 @@ router.get('/status/:txHash', async (req: Request, res: Response, next: NextFunc
             res.json({
                 found: true,
                 source: 'pending_table',
-                status: pending.status,
+                status: pending.status, // could be pending, failed, or confirmed (if consistency lag)
                 details: pending
-            });
-            return;
-        }
-
-        const { data: confirmed } = await supabase
-            .from('contributor_events')
-            .select('*')
-            .eq('tx_hash', txHash)
-            .single();
-
-        if (confirmed) {
-            res.json({
-                found: true,
-                source: 'events_table',
-                status: 'confirmed',
-                details: confirmed
             });
             return;
         }

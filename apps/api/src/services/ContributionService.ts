@@ -27,7 +27,8 @@ export class ContributionService {
      * Entry point for frontend to submit a txHash.
      * Idempotent: returns current status if already exists.
      */
-    public async submitContribution(txHash: string, isAnonymous: boolean): Promise<{ status: string; message: string }> {
+    public async submitContribution(txHashRaw: string, isAnonymous: boolean): Promise<{ status: string; message: string }> {
+        const txHash = txHashRaw.toLowerCase();
         // 1. Validate Input
         if (!ethers.isHexString(txHash, 32)) { // txHash should be 32 bytes (66 chars with 0x)
             throw new Error("Invalid transaction hash format");

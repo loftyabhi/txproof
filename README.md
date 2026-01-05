@@ -86,7 +86,7 @@ npm run dev -w apps/api
 -   [Deployment Guide](DEPLOYMENT.md): Instructions for Vercel and Render.
 -   [Contributing](CONTRIBUTING.md): Guidelines for developing in the monorepo.
 -   [Contribution System Architecture](docs/CONTRIBUTION_SYSTEM.md): Deep dive into the supporter leaderboard logic.
--   [Security Audit](security_audit.md): Details on the security architecture.
+-   [Security Audit](SECURITY_AUDIT.md): Details on the security architecture.
 
 ## 📄 License
 
