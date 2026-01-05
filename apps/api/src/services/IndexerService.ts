@@ -25,9 +25,12 @@ export class IndexerService {
         // usage: "first check base.org then try BASE_RPC_URL"
         const providers: (ethers.JsonRpcProvider | any)[] = [];
 
+        // Create static network definition to prevent auto-detection mismatch
+        const staticNetwork = new ethers.Network("base", CHAIN_ID);
+
         // 1. Primary: Base Mainnet
         providers.push({
-            provider: new ethers.JsonRpcProvider("https://mainnet.base.org"),
+            provider: new ethers.JsonRpcProvider("https://mainnet.base.org", staticNetwork, { staticNetwork: true }),
             priority: 1,
             weight: 2
         });
@@ -42,7 +45,7 @@ export class IndexerService {
                 console.warn("[Indexer] Ignoring BASE_RPC_URL (Sepolia detected) for Mainnet chain configuration.");
             } else {
                 providers.push({
-                    provider: new ethers.JsonRpcProvider(process.env.BASE_RPC_URL),
+                    provider: new ethers.JsonRpcProvider(process.env.BASE_RPC_URL, staticNetwork, { staticNetwork: true }),
                     priority: 2,
                     weight: 1
                 });
