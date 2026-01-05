@@ -138,6 +138,11 @@ export default function DashboardPage() {
                 address: tokenAddress as `0x${string}`,
                 abi: erc20Abi,
                 functionName: 'symbol',
+            },
+            {
+                address: tokenAddress as `0x${string}`,
+                abi: erc20Abi,
+                functionName: 'name',
             }
         ] : [],
     });
@@ -145,6 +150,7 @@ export default function DashboardPage() {
     const tokenBalance = tokenData?.[0]?.result;
     const tokenDecimals = tokenData?.[1]?.result;
     const tokenSymbol = tokenData?.[2]?.result;
+    const tokenName = tokenData?.[3]?.result;
 
     // Vault Contract Writes
     const { writeContractAsync } = useWriteContract();
@@ -207,14 +213,44 @@ export default function DashboardPage() {
         }), 'Updating Min Contribution');
     };
 
-    const handleSetToken = () => {
+    const handleSetToken = async () => {
         if (!tokenAddress) return;
-        wrapTx(writeContractAsync({
-            address: VAULT_ADDRESS,
-            abi: VAULT_ABI,
-            functionName: 'setTokenStatus',
-            args: [tokenAddress as `0x${string}`, tokenStatus],
-        }), 'Updating Token Status');
+
+        try {
+            // 1. Update On-Chain
+            await wrapTx(writeContractAsync({
+                address: VAULT_ADDRESS,
+                abi: VAULT_ABI,
+                functionName: 'setTokenStatus',
+                args: [tokenAddress as `0x${string}`, tokenStatus],
+            }), 'Updating Token Status');
+
+            // 2. Sync with Database
+            const toastId = toast.loading("Syncing with database...");
+            try {
+                // If banning (tokenStatus === false), we update is_active to false.
+                // If allowing, we insert/update with details.
+                const payload = {
+                    address: tokenAddress,
+                    symbol: tokenSymbol || 'UNK', // Fallback if fetch failed
+                    name: tokenName || 'Unknown Token',
+                    decimals: Number(tokenDecimals || 18),
+                    is_native: false,
+                    is_active: tokenStatus
+                };
+
+                await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/tokens`, payload, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                toast.success("Database synced successfully", { id: toastId });
+            } catch (apiErr) {
+                console.error("Database sync failed", apiErr);
+                toast.error("On-chain success, but DB sync failed.", { id: toastId });
+            }
+
+        } catch (err) {
+            // Error handling already in wrapTx for contract, but we catch here if needed
+        }
     };
 
     // Ads Management Functions
@@ -886,7 +922,7 @@ function ContributionsPanel({ token, apiUrl }: { token: string | null, apiUrl?: 
                                 <div className="flex justify-between">
                                     <span className="text-zinc-500">Status:</span>
                                     <span className={`font-bold uppercase ${statusResult.status === 'confirmed' ? 'text-green-400' :
-                                            statusResult.status === 'failed' ? 'text-red-400' : 'text-yellow-400'
+                                        statusResult.status === 'failed' ? 'text-red-400' : 'text-yellow-400'
                                         }`}>{statusResult.status}</span>
                                 </div>
                                 <div className="flex justify-between">

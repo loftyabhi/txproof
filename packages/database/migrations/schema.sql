@@ -161,6 +161,27 @@ EXCEPTION
 END $$;
 
 -- -----------------------------------------------------------------------------
+-- 9. SUPPORTED TOKENS (Dynamic List)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS supported_tokens (
+    symbol VARCHAR(10) PRIMARY KEY,
+    address VARCHAR(42) NOT NULL UNIQUE,
+    name VARCHAR(50) NOT NULL,
+    decimals INT NOT NULL DEFAULT 18,
+    is_native BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Enable RLS
+ALTER TABLE supported_tokens ENABLE ROW LEVEL SECURITY;
+
+-- Public can view active tokens
+DROP POLICY IF EXISTS "Public can view active tokens" ON supported_tokens;
+CREATE POLICY "Public can view active tokens" ON supported_tokens FOR SELECT USING (is_active = true);
+
+-- -----------------------------------------------------------------------------
 -- TRIGGERS & FUNCTIONS
 -- -----------------------------------------------------------------------------
 

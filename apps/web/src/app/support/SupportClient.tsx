@@ -35,45 +35,97 @@ type Token = {
 };
 
 const NATIVE_ETH_ADDRESS = '0x0000000000000000000000000000000000000000';
-const SUPPORTED_TOKENS: Token[] = [
-    { symbol: 'ETH', name: 'Ethereum', address: NATIVE_ETH_ADDRESS, decimals: 18, isNative: true },
-    { symbol: 'USDC', name: 'USD Coin', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6, isNative: false },
-    // Add more tokens here easily
-];
 
-// Default Token
-const DEFAULT_TOKEN = SUPPORTED_TOKENS[0];
+const INITIAL_TOKEN: Token = { symbol: 'ETH', name: 'Ethereum', address: NATIVE_ETH_ADDRESS, decimals: 18, isNative: true };
 
 export default function SupportClient() {
     const { address, isConnected } = useAccount();
 
     // State
     const [contributionAmount, setContributionAmount] = useState('');
-    const [selectedToken, setSelectedToken] = useState<Token>(DEFAULT_TOKEN);
+    const [selectedToken, setSelectedToken] = useState<Token>(INITIAL_TOKEN);
+    const [supportedTokens, setSupportedTokens] = useState<Token[]>([INITIAL_TOKEN]); // Start with ETH
     const [isApproving, setIsApproving] = useState(false);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [isAnonymous, setIsAnonymous] = useState(false);
     const [topContributors, setTopContributors] = useState<any[]>([]);
     const [mounted, setMounted] = useState(false);
 
-    // --- Data Fetching with Polling ---
-    const fetchContributors = () => {
-        fetch(`/api/contributors?type=top&ts=${Date.now()}`) // Bust cache
-            .then(res => res.json())
-            .then(data => {
-                if (data.contributors) {
-                    setTopContributors(data.contributors);
+    // --- Fetch Tokens ---
+    useEffect(() => {
+        const fetchTokens = async () => {
+            try {
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+                const res = await fetch(`${apiUrl}/api/v1/tokens`);
+                if (res.ok) {
+                    const tokens = await res.json();
+                    if (tokens && tokens.length > 0) {
+                        // Ensure ETH is always first/present or merge
+                        // Map API response to Component Token type
+                        const mappedTokens: Token[] = tokens.map((t: any) => ({
+                            symbol: t.symbol,
+                            name: t.name,
+                            address: t.address,
+                            decimals: t.decimals,
+                            isNative: t.is_native
+                        }));
+
+                        // If API has tokens, use them. ensure uniqueness if merging?
+                        // For now strictly replace allowed list
+                        setSupportedTokens(mappedTokens);
+
+                        // Update selected if previously native/default and we loaded new config
+                        if (selectedToken.isNative) {
+                            const eth = mappedTokens.find(t => t.isNative);
+                            if (eth) setSelectedToken(eth);
+                        }
+                    }
                 }
-            })
-            .catch(err => console.error('Failed to fetch contributors:', err));
+            } catch (err) {
+                console.error("Failed to fetch tokens", err);
+            }
+        };
+        fetchTokens();
+    }, []);
+
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    // --- Data Fetching with Polling ---
+    const fetchContributors = async () => {
+        try {
+            const res = await fetch(`/api/contributors?type=top&ts=${Date.now()}`); // Bust cache
+            const data = await res.json();
+            if (data.contributors) {
+                setTopContributors(data.contributors);
+            }
+        } catch (err) {
+            console.error('Failed to fetch contributors:', err);
+            throw err; // Propagate for manual handler
+        }
+    };
+
+    const handleManualRefresh = async () => {
+        if (isRefreshing) return;
+        setIsRefreshing(true);
+        const toastId = toast.loading("Refreshing leaderboard...");
+        try {
+            await fetchContributors();
+            toast.success("Leaderboard Refreshed", { id: toastId });
+        } catch (error) {
+            toast.error("Failed to refresh", { id: toastId });
+        } finally {
+            setIsRefreshing(false);
+        }
     };
 
     useEffect(() => {
         setMounted(true);
-        fetchContributors();
+        fetchContributors().catch(e => console.error("Initial fetch failed", e));
 
-        // POLL: Update every 60 seconds (or requested "once in a day", but 60s is better for UX)
-        const interval = setInterval(fetchContributors, 60000);
+        // POLL: Update every 60 seconds (1 minute)
+        const interval = setInterval(() => {
+            fetchContributors().catch(e => console.error("Auto-refresh failed", e));
+        }, 60000);
         return () => clearInterval(interval);
     }, []);
 
@@ -336,7 +388,7 @@ export default function SupportClient() {
                                                     className="absolute top-full right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden"
                                                 >
                                                     <div className="p-2 space-y-1">
-                                                        {SUPPORTED_TOKENS.map((token) => (
+                                                        {supportedTokens.map((token) => (
                                                             <button
                                                                 key={token.symbol}
                                                                 onClick={() => {
@@ -401,8 +453,9 @@ export default function SupportClient() {
                             <div className="flex items-center justify-center gap-2">
                                 <h2 className="text-3xl font-bold text-white mb-3">Top Contributors</h2>
                                 <button
-                                    onClick={fetchContributors}
-                                    className="p-2 rounded-full hover:bg-white/10 text-zinc-500 hover:text-white transition-colors"
+                                    onClick={handleManualRefresh}
+                                    disabled={isRefreshing}
+                                    className={`p-2 rounded-full hover:bg-white/10 text-zinc-500 hover:text-white transition-all ${isRefreshing ? 'animate-spin text-white' : ''}`}
                                     title="Refresh List"
                                 >
                                     <RefreshCw size={16} />

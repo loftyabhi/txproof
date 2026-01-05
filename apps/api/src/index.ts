@@ -20,6 +20,7 @@ app.use(express.json());
 import { supabase } from './lib/supabase';
 // import { IndexerService } from './services/IndexerService'; // MOVED TO LEGACY
 import contributionsRouter from './routes/contributions';
+import tokensRouter from './routes/tokens';
 
 // Start Background Services
 // const indexer = new IndexerService(); // DEPRECATED
@@ -31,6 +32,7 @@ const billService = new BillService();
 
 // Register Routes
 app.use('/api/contributions', contributionsRouter);
+app.use('/api/v1/tokens', tokensRouter);
 
 // Serve generated PDFs via Supabase Redirect
 app.get('/bills/:fileName', async (req: Request, res: Response) => {

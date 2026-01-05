@@ -1,61 +1,347 @@
-openapi: 3.0.0
+openapi: 3.0.3
 info:
   title: Chain Receipt API
+  description: |
+    # Enterprise API for Blockchain Receipt Generation
+
+    ## Security Architecture
+    This API enforces strict security controls:
+    - **Authentication**: Global Bearer JWT via `Authorization: Bearer <token>`.
+    - **Public Access**: Explicitly white-listed endpoints (e.g., `/health`, `/files`).
+    - **Admin Login**: Implements EIP-4361 (SIWE) standards with nonce-based replay protection.
+
+    ## Versioning & Lifecycle
+    - **Strategy**: Semantic Versioning (SemVer). Breaking changes increment the major version path `/api/v2`.
+    - **Deprecation**: Deprecated endpoints return `Deprecation` (boolean/date) and `Link` details headers (RFC 8594).
+    - **Sunset**: Removed endpoints return `Sunset` header indicating removal date.
+
+    ## Observability
+    - **Tracing**: Clients *must* propgate `X-Trace-ID` for distributed tracing.
+    - **Correlation**: All async operations return a `jobId` that correlates with internal logs.
+    - **Monitoring**: Health probes available at `/health`.
+
+    ## Rate Limiting & Abuse
+    Rate limits are enforced via Token Bucket. Violations return `429 Too Many Requests`.
+    - `X-RateLimit-Limit`: Request quota window.
+    - `X-RateLimit-Remaining`: Enforced quota remaining.
+    - `Retry-After`: Seconds until quota reset.
   version: 1.0.0
-  description: API for resolving blockchain transactions into bills and managing user plans.
+  contact:
+    name: Sarkaritool Mail
+    email: sarkaritoolmail@gmail.com
+    url: https://chainreceipt.vercel.app/contact-us
+  license:
+    name: Proprietary
+    url: https://chainreceipt.vercel.app/terms-of-service
+
 servers:
-  - url: http://localhost:3001/api/v1
-    description: Local Development Server
+  - url: https://gchain-receipt.onrender.com/api/v1
+    description: Production API Gateway
+
+# ------------------------------------------------------------------------------
+# Security Schemes
+# ------------------------------------------------------------------------------
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Standard JWT authentication. Token must be signed by the centralized authority.
+        Claims must include `sub`, `exp`, `iat`, and `role`.
+
+  # ----------------------------------------------------------------------------
+  # Standard Headers
+  # ----------------------------------------------------------------------------
+  headers:
+    RateLimitLimit:
+      description: The maximum number of requests allowed in the current period.
+      schema:
+        type: integer
+    RateLimitRemaining:
+      description: The number of requests remaining in the current period.
+      schema:
+        type: integer
+    RetryAfter:
+      description: Seconds to wait before retrying the request.
+      schema:
+        type: integer
+    TraceId:
+      description: Distributed tracing identifier.
+      schema:
+        type: string
+    JobId:
+      description: Async job correlation ID.
+      schema:
+        type: string
+        format: uuid
+
+  # ----------------------------------------------------------------------------
+  # Shared Parameters
+  # ----------------------------------------------------------------------------
+  parameters:
+    RequestId:
+      in: header
+      name: X-Request-ID
+      schema:
+        type: string
+        format: uuid
+      description: Client-generated unique ID for request tracking.
+    TraceId:
+      in: header
+      name: X-Trace-ID
+      schema:
+        type: string
+      description: Distributed trace ID for cross-service correlation.
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      schema:
+        type: string
+      description: Key to ensure idempotent processing of state-changing operations.
+
+  # ----------------------------------------------------------------------------
+  # Data Schemas
+  # ----------------------------------------------------------------------------
+  schemas:
+    # --- Standard Error Envelope ---
+    Error:
+      type: object
+      required:
+        - errorCode
+        - message
+        - requestId
+        - timestamp
+      properties:
+        errorCode:
+          type: string
+          description: Stable machine-readable error code (e.g., `VALIDATION_ERROR`).
+          example: RATE_LIMIT_EXCEEDED
+        message:
+          type: string
+          description: Human-readable error description.
+          example: You have exceeded the API rate limit.
+        requestId:
+          type: string
+          description: The request ID associated with this error.
+          format: uuid
+        timestamp:
+          type: string
+          description: Timestamp of the error occurrence.
+          format: date-time
+        details:
+          type: object
+          description: Optional structured context for the error.
+          additionalProperties: true
+
+
+
+    Bill:
+      type: object
+      description: Resolved bill object with strict schema envelope.
+      required:
+        - BILL_ID
+        - CHAIN_ID
+        - TIMESTAMP
+        - TOTAL_IN_USD
+        - TOTAL_OUT_USD
+        - ITEMS
+      properties:
+        BILL_ID:
+          type: string
+        CHAIN_ID:
+          type: integer
+        TIMESTAMP:
+          type: string
+          format: date-time
+        TOTAL_IN_USD:
+          type: string
+          pattern: '^\d+(\.\d{1,18})?$'
+        TOTAL_OUT_USD:
+          type: string
+          pattern: '^\d+(\.\d{1,18})?$'
+        ITEMS:
+          type: array
+          description: List of line items in the bill.
+          items:
+            $ref: '#/components/schemas/BillItem'
+    
+    BillItem:
+      type: object
+      description: Generic bill line item.
+      additionalProperties: false
+      properties:
+        description:
+          type: string
+        amount:
+          type: string
+        currency:
+          type: string
+        metadata:
+          type: object
+          description: Extensible metadata field for item-specific properties.
+          additionalProperties: true
+
+  # ----------------------------------------------------------------------------
+  # Standard Responses
+  # ----------------------------------------------------------------------------
+  responses:
+    BadRequest:
+      description: Validation failed or bad request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Authentication required or invalid token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Access denied due to insufficient permissions.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Resource conflict or idempotency failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RateLimited:
+      description: Too many requests.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/RateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/RateLimitRemaining'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+security:
+  - bearerAuth: []
+
+# ------------------------------------------------------------------------------
+# API Endpoints
+# ------------------------------------------------------------------------------
 paths:
   /health:
     get:
       summary: Health Check
+      description: |
+        Public endpoint for liveness and readiness probes.
+        Returns 200 OK if service is healthy.
+      security: [] # Public
+      tags:
+        - System
       responses:
         '200':
-          description: Service is healthy
+          description: Service is healthy.
           content:
             application/json:
               schema:
                 type: object
+                required:
+                  - status
+                  - timestamp
                 properties:
                   status:
                     type: string
+                    example: ok
                   timestamp:
                     type: number
+                    example: 1678886400000
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /auth/login:
     post:
-      summary: Admin Login via Wallet Signature
+      summary: Admin Login (Wallet Signature)
+      description: |
+        Authenticates an admin using EIP-4361 style wallet signatures.
+        Requires a valid signature of a nonce to prevent replay attacks.
+      security: [] # Public
+      tags:
+        - Authentication
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
       requestBody:
+        description: Wallet credentials.
         required: true
         content:
           application/json:
             schema:
               type: object
+              required:
+                - address
+                - signature
+                - nonce
               properties:
                 address:
                   type: string
+                  pattern: "^0x[a-fA-F0-9]{40}$"
                 signature:
                   type: string
+                  pattern: "^0x[a-fA-F0-9]+$"
                 nonce:
                   type: string
+                  minLength: 8
       responses:
         '200':
-          description: Login successful
+          description: Login successful.
           content:
             application/json:
               schema:
                 type: object
+                required:
+                  - accessToken
+                  - role
                 properties:
                   accessToken:
                     type: string
                   role:
                     type: string
-  
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /bills/resolve:
     post:
-      summary: Resolve a transaction hash into a bill (Public)
-      security: []
+      summary: Resolve Transaction (Public)
+      description: |
+        Queues a job to resolve a blockchain transaction into a bill.
+        This endpoint is idempotent if `Idempotency-Key` is provided.
+      security: [] # Public
+      tags:
+        - Bills
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/TraceId'
       requestBody:
         required: true
         content:
@@ -75,38 +361,71 @@ paths:
                   type: string
       responses:
         '200':
-          description: Request Queued
+          description: Request Queued.
+          headers:
+             X-RateLimit-Limit:
+               $ref: '#/components/headers/RateLimitLimit'
+             X-RateLimit-Remaining:
+               $ref: '#/components/headers/RateLimitRemaining'
           content:
             application/json:
               schema:
                 type: object
+                required:
+                  - success
+                  - jobId
+                  - message
                 properties:
                   success:
                     type: boolean
                   jobId:
                     type: string
+                    format: uuid
                   message:
                     type: string
-  
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /bills/job/{id}:
     get:
       summary: Get Bill Job Status
+      description: |
+        Retrieves the status of a bill resolution job.
+        Clients should poll this endpoint with exponential backoff.
+      security: [] # Public status check
+      tags:
+        - Bills
       parameters:
         - in: path
           name: id
           schema:
             type: string
+            format: uuid
           required: true
+        - $ref: '#/components/parameters/RequestId'
       responses:
         '200':
-          description: Job Status and Result
+          description: Job Status and Result.
+          headers:
+            X-Trace-ID:
+               $ref: '#/components/headers/TraceId'
           content:
             application/json:
               schema:
                 type: object
+                required:
+                  - id
+                  - state
                 properties:
                   id:
                     type: string
+                    format: uuid
                   state:
                     type: string
                     enum: [waiting, active, completed, failed, unknown]
@@ -119,84 +438,51 @@ paths:
                     type: string
                     nullable: true
         '404':
-          description: Job not found
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /ads/random:
     get:
-      summary: Get a random Ad
+      summary: Get Random Ad
+      description: Fetch a contextual ad for display.
+      security: [] # Public
+      tags:
+        - Ads
       parameters:
+        - $ref: '#/components/parameters/RequestId'
         - in: query
           name: placement
           schema:
             type: string
             enum: [web, pdf]
+          description: Ad placement context.
       responses:
         '200':
-          description: Ad Content
+          description: Ad Content.
           content:
             application/json:
               schema:
                 type: object
+                required:
+                  - id
+                  - imageUrl
+                  - linkUrl
                 properties:
                   id:
                     type: string
+                    format: uuid
                   imageUrl:
                     type: string
                   text:
                     type: string
                   linkUrl:
                     type: string
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
-  /plans:
-    get:
-      summary: Get Public Plans
-      responses:
-        '200':
-          description: List of Plans
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Plan'
 
-components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-  schemas:
-    Plan:
-      type: object
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        price:
-          type: number
-        features:
-          type: array
-          items:
-            type: string
-            
-    Bill:
-      type: object
-      additionalProperties: true
-      description: Flexible Bill Data Object
-      properties:
-        BILL_ID:
-          type: string
-        CHAIN_ID:
-          type: integer
-        TIMESTAMP:
-          type: string
-        TOTAL_IN_USD:
-          type: string
-        TOTAL_OUT_USD:
-          type: string
-        ITEMS:
-          type: array
-          items:
-            type: object
