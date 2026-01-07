@@ -1,11 +1,11 @@
 -- Database Schema for Chain Receipt
--- Full Consolidated Schema (Includes Indexer, Ad Placement, and Hardening)
+-- Full Consolidated Schema
+
 
 -----------------------------------------------------------------------------
 -- 0. CLEANUP (Optional - Use with Caution)
 -- -----------------------------------------------------------------------------
 -- DROP TABLE IF EXISTS contributor_events CASCADE;
--- DROP TABLE IF EXISTS indexer_state CASCADE;
 -- DROP TABLE IF EXISTS contributors CASCADE;
 -- DROP TABLE IF EXISTS bills CASCADE;
 -- DROP TABLE IF EXISTS users CASCADE;
@@ -99,30 +99,7 @@ CREATE TABLE IF NOT EXISTS contributors (
     PRIMARY KEY (wallet_address, chain_id)
 );
 
--- -----------------------------------------------------------------------------
--- 6. INDEXER STATE
--- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS indexer_state (
-    key VARCHAR(50),
-    chain_id INT NOT NULL DEFAULT 8453,
-    last_synced_block BIGINT NOT NULL CHECK (last_synced_block >= 0),
-    -- [NEW] Parallel & Observability Columns
-    locked_until TIMESTAMP,
-    owner_id VARCHAR(50),
-    leased_from_block BIGINT,
-    leased_to_block BIGINT,
-    last_success_at TIMESTAMP,
-    last_attempt_at TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (key, chain_id)
-);
 
--- Seed Initial Indexer State
--- [FIX] Use 0 (Genesis) or Deployment Block. Do NOT force update on conflict.
-INSERT INTO indexer_state (key, chain_id, last_synced_block)
-VALUES ('contributors_sync', 8453, 0)
-ON CONFLICT (key, chain_id) 
-DO NOTHING;
 
 -- -----------------------------------------------------------------------------
 -- 7. INDEXER EVENTS (Immutable Log)
@@ -192,7 +169,7 @@ BEGIN
   NEW.updated_at = CURRENT_TIMESTAMP;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 -- 2. Immutability Guards
 CREATE OR REPLACE FUNCTION prevent_wallet_update()
@@ -200,7 +177,7 @@ RETURNS trigger AS $$
 BEGIN
   RAISE EXCEPTION 'wallet_address is immutable';
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 CREATE OR REPLACE FUNCTION prevent_bill_update()
 RETURNS trigger AS $$
@@ -210,7 +187,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 -- Apply Triggers
 DROP TRIGGER IF EXISTS users_updated_at ON users;
@@ -240,187 +217,12 @@ BEGIN
     updated_at = NOW();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 DROP TRIGGER IF EXISTS trg_update_contributors ON contributor_events;
 CREATE TRIGGER trg_update_contributors AFTER INSERT ON contributor_events FOR EACH ROW EXECUTE FUNCTION update_contributors();
 
--- 4. [NEW] Claim Scan Lease RPC
--- returns { allowed: boolean, start_block: bigint, end_block: bigint, message: text }
-CREATE OR REPLACE FUNCTION claim_indexer_scan(
-    p_chain_id INT,
-    p_key VARCHAR,
-    p_owner_id VARCHAR,
-    p_force BOOLEAN,
-    p_batch_size INT DEFAULT 10
-) RETURNS JSONB AS $$
-DECLARE
-    v_state RECORD;
-    v_now TIMESTAMP := NOW();
-    v_lease_duration INTERVAL := '15 minutes'; -- Enterprise safety (cold starts/lag)
-    v_throttle_interval INTERVAL := '6 hours';
-    v_start_block BIGINT;
-BEGIN
-    -- 1. Get State (Lock)
-    SELECT * INTO v_state FROM indexer_state 
-    WHERE key = p_key AND chain_id = p_chain_id FOR UPDATE; 
 
-    -- [CRITICAL] Fail if state missing. Manual Init Required.
-    IF v_state IS NULL THEN
-        RAISE EXCEPTION 'Indexer state not initialized for key % chain %. Run migration.', p_key, p_chain_id;
-    END IF;
-
-    -- 2. SAFETY CHECK: Strict Locking
-    IF v_state.locked_until IS NOT NULL 
-       AND v_state.locked_until > v_now 
-       AND v_state.owner_id IS DISTINCT FROM p_owner_id THEN
-         RETURN jsonb_build_object(
-            'allowed', false,
-            'reason', 'LOCKED_BY_OTHER',
-            'locked_until', v_state.locked_until,
-            'current_owner', v_state.owner_id
-        );
-    END IF;
-
-    -- 3. THROTTLE CHECK: Rate Limiting
-    -- Check time since last SUCCESS, not last attempt.
-    IF NOT p_force 
-       AND (v_state.owner_id IS DISTINCT FROM p_owner_id)
-       AND (v_state.last_success_at IS NOT NULL)
-       AND (v_now - v_state.last_success_at < v_throttle_interval) THEN
-         RETURN jsonb_build_object(
-            'allowed', false,
-            'reason', 'THROTTLED',
-            'next_run_at', v_state.last_success_at + v_throttle_interval
-        );
-    END IF;
-
-    -- 4. GRANT LEASE
-    v_start_block := v_state.last_synced_block;
-    
-    UPDATE indexer_state 
-    SET locked_until = v_now + v_lease_duration,
-        owner_id = p_owner_id,
-        updated_at = v_now,
-        last_attempt_at = v_now,
-        leased_from_block = v_start_block,
-        leased_to_block = v_start_block + p_batch_size - 1
-    WHERE key = p_key AND chain_id = p_chain_id;
-
-    RETURN jsonb_build_object(
-        'allowed', true,
-        'start_block', v_start_block,
-        'lease_expiry', v_now + v_lease_duration
-    );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-
--- 5. Atomic Ingestion RPC (Updated with Crash Safety & Lease Enforcement)
-CREATE OR REPLACE FUNCTION ingest_contributor_events(
-    p_chain_id INT,
-    p_key VARCHAR,
-    p_new_cursor BIGINT, -- Kept for API signature compat, but ignored for empty batches now
-    p_events JSONB
-) RETURNS VOID AS $$
-DECLARE
-    event_record JSONB;
-    v_max_event_block BIGINT;
-    v_final_cursor BIGINT;
-    v_state RECORD;
-BEGIN
-    -- 0. Get State & Validate Lease
-    SELECT * INTO v_state FROM indexer_state 
-    WHERE key = p_key AND chain_id = p_chain_id FOR UPDATE;
-
-    IF v_state IS NULL THEN 
-        RAISE EXCEPTION 'Indexer state missing'; 
-    END IF;
-
-    IF v_state.leased_to_block IS NULL THEN
-        RAISE EXCEPTION 'No active lease found';
-    END IF;
-
-    -- 1. Ingest Events
-    FOR event_record IN SELECT * FROM jsonb_array_elements(p_events)
-    LOOP
-        -- [SAFETY] Strictly Enforce Lease Range
-        IF (event_record->>'block_number')::BIGINT > v_state.leased_to_block THEN
-            RAISE EXCEPTION 'Security: Event block % exceeds leased range %', 
-                (event_record->>'block_number'), v_state.leased_to_block;
-        END IF;
-
-        INSERT INTO contributor_events (
-            chain_id, tx_hash, log_index, block_number, block_timestamp,
-            donor_address, amount_wei, is_anonymous, message
-        ) VALUES (
-            p_chain_id,
-            (event_record->>'tx_hash')::VARCHAR,
-            (event_record->>'log_index')::INT,
-            (event_record->>'block_number')::BIGINT,
-            (event_record->>'block_timestamp')::TIMESTAMP,
-            (event_record->>'donor_address')::VARCHAR,
-            (event_record->>'amount_wei')::NUMERIC,
-            COALESCE((event_record->>'is_anonymous')::BOOLEAN, FALSE),
-             event_record->>'message'
-        )
-        ON CONFLICT (chain_id, tx_hash, log_index) DO NOTHING;
-    END LOOP;
-
-    -- 2. Calculate Strict Cursor
-    -- If events exist: Cursor = MAX(Block) + 1.
-    -- If no events: Cursor = leased_to_block + 1 (Trust DB, not Worker).
-    SELECT MAX((x->>'block_number')::BIGINT) INTO v_max_event_block
-    FROM jsonb_array_elements(p_events) x;
-
-    IF v_max_event_block IS NOT NULL THEN
-        v_final_cursor := v_max_event_block + 1;
-    ELSE
-        v_final_cursor := v_state.leased_to_block + 1;
-    END IF;
-
-    -- 3. Update State & Release Lock
-    UPDATE indexer_state
-    SET last_synced_block = GREATEST(last_synced_block, v_final_cursor),
-        last_success_at = NOW(),
-        locked_until = NULL, -- Unlock
-        owner_id = NULL,
-        leased_from_block = NULL, -- Clear lease context
-        leased_to_block = NULL,
-        updated_at = NOW()
-    WHERE key = p_key AND chain_id = p_chain_id;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- [SECURITY] Vital: Prevent public/anon users from calling this RPC
-REVOKE EXECUTE ON FUNCTION ingest_contributor_events(INT, VARCHAR, BIGINT, JSONB) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION ingest_contributor_events(INT, VARCHAR, BIGINT, JSONB) FROM anon;
-REVOKE EXECUTE ON FUNCTION ingest_contributor_events(INT, VARCHAR, BIGINT, JSONB) FROM authenticated;
-
-REVOKE EXECUTE ON FUNCTION claim_indexer_scan(INT, VARCHAR, VARCHAR, BOOLEAN, INT) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION claim_indexer_scan(INT, VARCHAR, VARCHAR, BOOLEAN, INT) FROM anon;
-REVOKE EXECUTE ON FUNCTION claim_indexer_scan(INT, VARCHAR, VARCHAR, BOOLEAN, INT) FROM authenticated;
-
--- -----------------------------------------------------------------------------
--- OBSERVABILITY VIEW
--- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW indexer_health AS
-SELECT
-  key,
-  chain_id,
-  last_synced_block,
-  last_success_at,
-  locked_until,
-  owner_id,
-  leased_from_block AS current_lease_start,
-  leased_to_block AS current_lease_end,
-  NOW() - last_success_at AS lag,
-  CASE 
-    WHEN locked_until > NOW() THEN 'LOCKED / RUNNING'
-    WHEN NOW() - last_success_at > interval '6 hours' THEN 'DELAYED'
-    ELSE 'HEALTHY'
-  END AS status
-FROM indexer_state;
 
 -- -----------------------------------------------------------------------------
 -- ROW LEVEL SECURITY (RLS)
@@ -430,8 +232,12 @@ ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bills ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ad_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE contributors ENABLE ROW LEVEL SECURITY;
-ALTER TABLE indexer_state ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE contributor_events ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service manages users" ON users FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
+CREATE POLICY "Service manages bills" ON bills FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
+CREATE POLICY "Service can read contributor events" ON contributor_events FOR SELECT USING (auth.role() = 'service_role');
 
 -- -----------------------------------------------------------------------------
 -- RLS NOT ENABLED ON PLANS TABLE AS IT IS REMOVED
@@ -471,6 +277,8 @@ CREATE TRIGGER pending_contributions_updated_at BEFORE UPDATE ON pending_contrib
 -- Enable RLS
 ALTER TABLE pending_contributions ENABLE ROW LEVEL SECURITY;
 
+CREATE POLICY "Service manages pending contributions" ON pending_contributions FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
+
 -- -----------------------------------------------------------------------------
 -- 10. BILL GENERATION SOFT QUEUE (Free-Tier Safe)
 -- -----------------------------------------------------------------------------
@@ -504,16 +312,24 @@ ALTER TABLE bill_jobs ENABLE ROW LEVEL SECURITY;
 
 -- Public Policies
 DROP POLICY IF EXISTS "Public can view jobs" ON bill_jobs;
-CREATE POLICY "Public can view jobs" ON bill_jobs FOR SELECT USING (true);
-
 DROP POLICY IF EXISTS "Public can insert jobs" ON bill_jobs;
-CREATE POLICY "Public can insert jobs" ON bill_jobs FOR INSERT WITH CHECK (true);
+
+-- Only backend/service role should manage jobs
+CREATE POLICY "Service manages bill jobs"
+ON bill_jobs
+FOR ALL
+USING (auth.role() = 'service_role')
+WITH CHECK (auth.role() = 'service_role');
 
 -- -----------------------------------------------------------------------------
 -- ATOMIC CLAIM RPC (CRITICAL FOR CONCURRENCY)
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION claim_next_bill_job()
-RETURNS TABLE(id uuid, tx_hash text, chain_id int, metadata jsonb) AS $$
+RETURNS TABLE(id uuid, tx_hash text, chain_id int, metadata jsonb)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
   RETURN QUERY
   UPDATE bill_jobs
@@ -529,4 +345,8 @@ BEGIN
   )
   RETURNING bill_jobs.id, bill_jobs.tx_hash, bill_jobs.chain_id, bill_jobs.metadata;
 END;
-$$ LANGUAGE plpgsql;
+$$;
+
+REVOKE EXECUTE ON FUNCTION claim_next_bill_job() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION claim_next_bill_job() FROM anon;
+REVOKE EXECUTE ON FUNCTION claim_next_bill_job() FROM authenticated;
