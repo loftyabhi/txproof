@@ -81,8 +81,12 @@ export class AdminService {
             placement: ad.placement || 'both'
         };
 
-        if (ad.id && !isNaN(Number(ad.id))) {
-            dbAd.id = Number(ad.id);
+        const MAX_INT = 2147483647;
+        const idVal = Number(ad.id);
+
+        // Handle valid DB IDs (Integers). Ignore large temp IDs (timestamps) from frontend.
+        if (ad.id && !isNaN(idVal) && idVal <= MAX_INT) {
+            dbAd.id = idVal;
         }
 
         const { data, error } = await supabase
