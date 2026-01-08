@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /print/
+Disallow: /_next/
+
+Sitemap: https://chainreceipt.vercel.app/sitemap.xml
