@@ -273,6 +273,40 @@ export default function FeaturesClient() {
                     </p>
                 </div>
 
+                {/* FAQ Section */}
+                <div className="max-w-3xl mx-auto mb-32">
+                    <h2 className="text-3xl font-bold text-white mb-12 text-center">Frequently Asked Questions</h2>
+                    <div className="space-y-4">
+                        {[
+                            {
+                                q: "Is Chain Receipt free to use?",
+                                a: "Base features including single transaction analysis and standard PDF downloads are free. Advanced features and API access may require a subscription."
+                            },
+                            {
+                                q: "Which blockchains are supported?",
+                                a: "We currently support major EVM-compatible chains including Ethereum, Base, Polygon, Arbitrum, Optimism, and Binance Smart Chain."
+                            },
+                            {
+                                q: "Is my data stored?",
+                                a: "No. Chain Receipt operates on a privacy-first, client-side model. We analyze on-chain data on-demand and do not store your transaction history."
+                            },
+                            {
+                                q: "Can I use the API for my application?",
+                                a: "Yes. Our Developer API allows you to integrate receipt generation directly into your dApp or wallet. Contact us for access keys."
+                            }
+                        ].map((faq, i) => (
+                            <details key={i} className="group border border-white/10 rounded-2xl bg-white/5 p-6 open:bg-white/10 transition-colors">
+                                <summary className="flex cursor-pointer items-center justify-between font-bold text-white group-hover:text-violet-400 select-none">
+                                    {faq.q}
+                                </summary>
+                                <p className="mt-4 text-zinc-400 leading-relaxed">
+                                    {faq.a}
+                                </p>
+                            </details>
+                        ))}
+                    </div>
+                </div>
+
                 {/* CTA Section */}
                 <motion.div
                     initial={{ opacity: 0, scale: 0.95 }}
