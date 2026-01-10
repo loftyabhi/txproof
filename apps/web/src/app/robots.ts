@@ -6,7 +6,7 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: '*',
         allow: '/',
-        disallow: ['/api/', '/print/'],
+        disallow: ['/api', '/print'],
       },
     ],
     sitemap: 'https://chainreceipt.vercel.app/sitemap.xml',
