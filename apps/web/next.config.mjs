@@ -11,7 +11,16 @@ const nextConfig = {
             },
             {
                 protocol: 'https',
-                hostname: '*.ad-maven.com', // Potential other provider
+                hostname: '*.ad-maven.com',
+            },
+            {
+                // [Enterprise] Whitelist Supabase Storage for custom ads
+                protocol: 'https',
+                hostname: '*.supabase.co',
+            },
+            {
+                protocol: 'https',
+                hostname: '*.supabase.in',
             },
         ],
     },
@@ -48,6 +57,12 @@ const nextConfig = {
                 ],
             }
         ];
+    },
+    compiler: {
+        // [Enterprise] Clean Console: Remove all console.* calls in production except errors
+        removeConsole: process.env.NODE_ENV === 'production' ? {
+            exclude: ['error', 'warn'],
+        } : false,
     },
 };
 
