@@ -11,6 +11,10 @@ const nextConfig = {
             },
             {
                 protocol: 'https',
+                hostname: '*.aads.com', // [Enterprise] Add alternative domain
+            },
+            {
+                protocol: 'https',
                 hostname: '*.ad-maven.com',
             },
             {
