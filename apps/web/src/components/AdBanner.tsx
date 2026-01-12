@@ -14,7 +14,14 @@ interface Ad {
 // Helper to extract src from an img tag string
 function extractImgSrc(html: string): string | null {
     const match = html.match(/src=["'](.*?)["']/);
-    return match ? match[1] : null;
+    if (!match) return null;
+
+    let src = match[1];
+    // Required: Fix Protocol-Relative URLs (//domain.com) so Next.js server can fetch them
+    if (src.startsWith('//')) {
+        return `https:${src}`;
+    }
+    return src;
 }
 
 export default function AdBanner() {
