@@ -1,20 +1,14 @@
 import { NextResponse } from 'next/server';
 import { formatEther } from 'viem';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 // --- Configuration ---
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// --- Supabase Init (Module Scope) ---
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-    throw new Error("Missing Supabase Environment Variables");
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// Use the Admin client to bypass RLS for reading contributor data.
+// We strictly control what is returned in the GET handler below.
+const supabase = supabaseAdmin;
 
 // --- Strict Types ---
 interface ContributorDBRow {

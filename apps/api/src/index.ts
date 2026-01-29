@@ -19,6 +19,8 @@ app.use(express.json());
 import { supabase } from './lib/supabase';
 import contributionsRouter from './routes/contributions';
 import tokensRouter from './routes/tokens';
+import pdfsRouter from './routes/v1/pdfs';
+import adminRouter from './routes/v1/adminRouter';
 
 // Services
 const authService = new AuthService();
@@ -29,6 +31,11 @@ const softQueueService = new SoftQueueService();
 // Register Routes
 app.use('/api/contributions', contributionsRouter);
 app.use('/api/v1/tokens', tokensRouter);
+
+// SaaS Platform Routes
+app.use('/api/v1/pdfs', pdfsRouter);
+// Note: Admin router mounted below after verifyAdmin definition
+
 
 // Serve generated PDFs via Supabase Redirect
 app.get('/bills/:fileName', async (req: Request, res: Response) => {
@@ -183,7 +190,7 @@ app.post('/api/v1/bills/resolve', async (req: Request, res: Response, next: Next
         console.log(`[API] Enqueueing request: ${txHash}`);
 
         // Enqueue (Idempotent)
-        const job = await softQueueService.enqueue(txHash, chainId, connectedWallet);
+        const job = await softQueueService.enqueue(txHash, chainId, { connectedWallet });
 
         // Trigger Processing (Redundant but explicit as per plan)
         // enqueue() calls it internally, but we ensure it runs.
@@ -265,6 +272,10 @@ const verifyAdmin = (req: Request, res: Response, next: NextFunction) => {
         res.status(403).json({ error: 'Invalid or expired token' });
     }
 };
+
+// SaaS Admin Dashboard
+app.use('/api/v1/admin', verifyAdmin, adminRouter);
+
 
 // Ads
 // Public Random Ad

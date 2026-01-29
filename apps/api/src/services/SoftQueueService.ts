@@ -6,8 +6,7 @@ const PROCESSING_TIMEOUT_MINS = parseInt(process.env.JOB_PROCESSING_TIMEOUT_MINU
 
 export class SoftQueueService {
     private billService: BillService;
-    private processingSlots = 0; // Local "Token Bucket" for Concurrency
-    // DELETED: isProcessing is gone.
+    private processingSlots = 0;
 
     constructor() {
         this.billService = new BillService();
@@ -15,9 +14,10 @@ export class SoftQueueService {
 
     /**
      * Enqueue a job (Wait-Free / Idempotent).
-     * Returns existing job if found.
      */
-    async enqueue(txHash: string, chainId: number, connectedWallet?: string) {
+    async enqueue(txHash: string, chainId: number, options: { connectedWallet?: string, apiKeyId?: string, priority?: number } = {}) {
+        const { connectedWallet, apiKeyId, priority = 0 } = options;
+
         // 1. Check existing
         const { data: existing } = await supabase
             .from('bill_jobs')
@@ -40,14 +40,16 @@ export class SoftQueueService {
                 tx_hash: txHash,
                 chain_id: chainId,
                 status: 'pending',
-                metadata: connectedWallet ? { connectedWallet } : {}
+                metadata: connectedWallet ? { connectedWallet } : {},
+                api_key_id: apiKeyId || null,
+                priority: priority // 0 for free/anon, 10+ for paid
             })
             .select()
             .single();
 
         if (error) {
-            console.error('[SoftQueue] Enqueue DB Error:', JSON.stringify(error, null, 2)); // Debugging
-            if (error.code === '23505') { // Unique constraint
+            console.error('[SoftQueue] Enqueue DB Error:', JSON.stringify(error, null, 2));
+            if (error.code === '23505') {
                 const { data: raceExisting } = await supabase
                     .from('bill_jobs')
                     .select('*')
@@ -64,51 +66,40 @@ export class SoftQueueService {
 
     /**
      * Event-Driven Processor.
-     * Should be called when:
-     * 1. A new job is Enqueued (Trigger)
-     * 2. A job Completes/Fails (Chain Reaction)
-     * 3. A Poll request happens (Wake Up / Recovery)
      */
     async processNext() {
-        // 1. Local Concurrency Check (Token Bucket)
-        // If we are already running MAX jobs locally, do not spawn another processor.
         if (this.processingSlots >= MAX_CONCURRENT_JOBS) return;
 
-        // Take a slot
         this.processingSlots++;
 
         try {
-            // 2. Global Crash Check (Optional / Periodic)
             await this.recoverStaleJobs();
 
-            // 3. Atomic Claim (RPC)
-            // This is the source of truth.
-            const { data, error: rpcError } = await supabase.rpc('claim_next_bill_job');
+            // 3. Atomic Claim (RPC) - V2 for Priority
+            const { data, error: rpcError } = await supabase.rpc('claim_next_bill_job_v2');
 
             if (rpcError) {
                 console.error('[SoftQueue] RPC Error:', rpcError);
                 return;
             }
 
-            // CHECK: RPC returns an array
+            // RPC returns Table Row type
             const job = (data && data.length > 0) ? data[0] : null;
 
             if (!job) {
-                // Queue Empty. Stop recursion.
-                this.processingSlots--; // Release slot as we are not processing anything
+                this.processingSlots--;
                 return;
             }
 
-            // 4. Execute Job
-            console.log(`[SoftQueue] Processing Job ${job.id} (${job.tx_hash})...`);
+            console.log(`[SoftQueue] Processing Job ${job.id} (${job.tx_hash}) Priority: ${job.priority || 0}...`);
 
-            // Start Heartbeat (Keep-Alive)
+            const startTime = Date.now();
+
             const heartbeat = setInterval(async () => {
                 await supabase.from('bill_jobs').update({ heartbeat_at: new Date().toISOString() }).eq('id', job.id);
-            }, 10000); // 10s Pulse
+            }, 10000);
 
             try {
-                // Extract metadata
                 const wallet = job.metadata?.connectedWallet;
 
                 const result = await this.billService.generateBill({
@@ -117,17 +108,25 @@ export class SoftQueueService {
                     connectedWallet: wallet
                 });
 
+                const duration = Date.now() - startTime;
+
+                // Detect Cache Hit (Basic duration heuristic for now or if BillService is updated)
+                const isCacheHit = (result as any).cacheHit === true;
+
                 // Complete
                 await supabase
                     .from('bill_jobs')
                     .update({
                         status: 'completed',
                         bill_id: result.billData.BILL_ID,
-                        updated_at: new Date().toISOString()
+                        updated_at: new Date().toISOString(),
+                        finished_at: new Date().toISOString(),
+                        duration_ms: duration,
+                        cache_hit: isCacheHit
                     })
                     .eq('id', job.id);
 
-                console.log(`[SoftQueue] Job ${job.id} Completed.`);
+                console.log(`[SoftQueue] Job ${job.id} Completed in ${duration}ms.`);
 
             } catch (err: any) {
                 console.error(`[SoftQueue] Job ${job.id} Failed:`, err.message);
@@ -136,22 +135,20 @@ export class SoftQueueService {
                     .update({
                         status: 'failed',
                         error: err.message,
-                        updated_at: new Date().toISOString()
+                        updated_at: new Date().toISOString(),
+                        finished_at: new Date().toISOString(),
+                        duration_ms: Date.now() - startTime
                     })
                     .eq('id', job.id);
             } finally {
                 clearInterval(heartbeat);
-
-                // Chain Reaction: Try to pick up the next job immediately
                 this.processingSlots--;
-
-                // Trigger next attempt
                 setImmediate(() => this.processNext());
             }
 
         } catch (err) {
             console.error('[SoftQueue] Unhandled Execution Error:', err);
-            this.processingSlots--; // Release slot on crash
+            this.processingSlots--;
         }
     }
 
@@ -161,7 +158,7 @@ export class SoftQueueService {
             .from('bill_jobs')
             .select('id')
             .eq('status', 'processing')
-            .lt('heartbeat_at', staleTime); // Uses heartbeat, not updated_at
+            .lt('heartbeat_at', staleTime);
 
         if (stuckJobs && stuckJobs.length > 0) {
             console.warn(`[SoftQueue] Recovering ${stuckJobs.length} stuck jobs...`);
@@ -195,11 +192,13 @@ export class SoftQueueService {
                 queuePosition = 0;
                 estimatedWaitSeconds = AVG_TIME;
             } else {
+                // Approximate position based on Priority
                 const { count } = await supabase
                     .from('bill_jobs')
                     .select('*', { count: 'exact', head: true })
                     .in('status', ['pending', 'processing'])
-                    .lt('created_at', job.created_at);
+                    // Count jobs with higher priority OR same priority but older
+                    .or(`priority.gt.${job.priority || 0},and(priority.eq.${job.priority || 0},created_at.lt.${job.created_at})`);
 
                 queuePosition = (count || 0) + 1;
                 estimatedWaitSeconds = Math.ceil((queuePosition / MAX_CONCURRENT_JOBS) * AVG_TIME);
@@ -226,7 +225,8 @@ export class SoftQueueService {
             state: job.status,
             result: job.status === 'completed' ? {
                 billData: billData,
-                pdfPath: `/print/bill/${job.bill_id}`
+                pdfPath: `/print/bill/${job.bill_id}`,
+                duration_ms: job.duration_ms
             } : null,
             error: job.error,
             queuePosition,

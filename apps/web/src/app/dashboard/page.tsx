@@ -5,13 +5,13 @@ import { useAccount, useReadContract, useWriteContract, useBalance, useReadContr
 import { AdminLogin } from '../../components/AdminLogin';
 import { Navbar } from '@/components/Navbar';
 import axios from 'axios';
-import { Trash2, Plus, Megaphone, Shield, Search, X, Loader2, Lock, Unlock, ArrowDownCircle, Settings, Coins, AlertTriangle } from 'lucide-react';
+import { Trash2, Plus, Megaphone, Shield, Search, X, Loader2, Lock, Unlock, ArrowDownCircle, Settings, Coins, AlertTriangle, Key, BarChart3, Activity, FileText, Globe, Ban, AlertCircle, Copy, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { formatEther, parseEther, erc20Abi, formatUnits } from 'viem';
 import { base } from 'wagmi/chains';
 
-// Minimal ABI for SupportVault
+// Minimal ABI for SupportVault (unchanged)
 const VAULT_ABI = [
     { inputs: [], name: 'paused', outputs: [{ internalType: 'bool', name: '', type: 'bool' }], stateMutability: 'view', type: 'function' },
     { inputs: [], name: 'owner', outputs: [{ internalType: 'address', name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
@@ -35,16 +35,26 @@ export default function DashboardPage() {
     const chainId = useChainId();
     const [token, setToken] = useState<string | null>(null);
     const [hasHydrated, setHasHydrated] = useState(false);
-    const [activeTab, setActiveTab] = useState<'ads' | 'vault' | 'contributions'>('ads');
+    const [activeTab, setActiveTab] = useState<'ads' | 'vault' | 'contributions' | 'api'>('ads');
+    // Sub-tab for API Platform
+    const [apiTab, setApiTab] = useState<'keys' | 'analytics' | 'sla' | 'audit'>('keys');
     const [isAdmin, setIsAdmin] = useState(false);
 
-    // Ads Data State
+    // Data States
     const [ads, setAds] = useState<any[]>([]);
+    const [apiKeys, setApiKeys] = useState<any[]>([]);
+    const [auditLogs, setAuditLogs] = useState<any[]>([]);
+    const [apiStats, setApiStats] = useState<any>(null);
     const [isLoadingData, setIsLoadingData] = useState(false);
 
-    // Ads Form State
+    // Form States
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [formData, setFormData] = useState<any>({});
+
+    // API Key Form
+    const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
+    const [keyFormData, setKeyFormData] = useState({ ownerId: '', planName: 'Free' });
+    const [createdKey, setCreatedKey] = useState<string | null>(null); // Show once
 
     // Vault Form States
     const [withdrawAddress, setWithdrawAddress] = useState('');
@@ -60,218 +70,101 @@ export default function DashboardPage() {
         const storedToken = localStorage.getItem('admin_token');
         if (storedToken) setToken(storedToken);
 
-        // Check if user is admin (required for both ads and vault access)
         if (address && ADMIN_ADDRESS && address.toLowerCase() === ADMIN_ADDRESS.toLowerCase()) {
             setIsAdmin(true);
         } else {
             setIsAdmin(false);
+            // Default to 'api' (Developer Portal) if not admin
+            setActiveTab('api');
         }
     }, [address]);
 
     useEffect(() => {
         if (!isConnected) {
             setToken(null);
+            setIsAdmin(false);
         }
     }, [isConnected, address]);
 
-    // Auto-switch to Base Mainnet
+    // Data Fetching Routing
     useEffect(() => {
-        if (isConnected && chainId && chainId !== TARGET_CHAIN_ID) {
-            const switchNetwork = async () => {
-                try {
-                    await switchChainAsync({ chainId: TARGET_CHAIN_ID });
-                    toast.success("Switched to Base Mainnet");
-                } catch (error: any) {
-                    if (!error.message?.includes("User rejected")) {
-                        console.error("Network switch failed:", error);
-                        toast.warning("Please switch to Base Mainnet for full functionality");
-                    }
-                }
-            };
-            switchNetwork();
+        if (!isConnected || !token) return;
+
+        if (activeTab === 'ads') fetchData();
+        if (activeTab === 'api') {
+            if (apiTab === 'keys') fetchApiKeys();
+            if (apiTab === 'audit') fetchAuditLogs();
+            if (apiTab === 'analytics' || apiTab === 'sla') fetchApiStats();
         }
-    }, [isConnected, chainId, switchChainAsync]);
+    }, [token, isConnected, activeTab, apiTab]);
 
-    useEffect(() => {
-        if (token && isConnected && activeTab === 'ads') {
-            fetchData();
-        }
-    }, [token, isConnected, activeTab]);
-
-    // Vault Contract Reads
-    const { data: isPaused, refetch: refetchPaused } = useReadContract({
-        address: VAULT_ADDRESS,
-        abi: VAULT_ABI,
-        functionName: 'paused',
-    });
-
-    const { data: owner } = useReadContract({
-        address: VAULT_ADDRESS,
-        abi: VAULT_ABI,
-        functionName: 'owner',
-    });
-
-    const { data: minContribution, refetch: refetchMin } = useReadContract({
-        address: VAULT_ADDRESS,
-        abi: VAULT_ABI,
-        functionName: 'minContributionNative',
-    });
-
-    const { data: balanceData, refetch: refetchBalance } = useBalance({
-        address: VAULT_ADDRESS,
-    });
-
-    const { data: tokenData } = useReadContracts({
-        contracts: (tokenAddress && tokenAddress.startsWith('0x') && tokenAddress.length === 42) ? [
-            {
-                address: tokenAddress as `0x${string}`,
-                abi: erc20Abi,
-                functionName: 'balanceOf',
-                args: [VAULT_ADDRESS],
-            },
-            {
-                address: tokenAddress as `0x${string}`,
-                abi: erc20Abi,
-                functionName: 'decimals',
-            },
-            {
-                address: tokenAddress as `0x${string}`,
-                abi: erc20Abi,
-                functionName: 'symbol',
-            },
-            {
-                address: tokenAddress as `0x${string}`,
-                abi: erc20Abi,
-                functionName: 'name',
-            }
-        ] : [],
-    });
-
-    const tokenBalance = tokenData?.[0]?.result;
-    const tokenDecimals = tokenData?.[1]?.result;
-    const tokenSymbol = tokenData?.[2]?.result;
-    const tokenName = tokenData?.[3]?.result;
-
-    // Vault Contract Writes
-    const { writeContractAsync } = useWriteContract();
-
-    const wrapTx = async (promise: Promise<`0x${string}`>, title: string) => {
-        const toastId = toast.loading("Waiting for confirmation...", { description: title });
+    // --- API Platform Fetchers ---
+    // --- API Platform Fetchers ---
+    const fetchApiKeys = async () => {
+        setIsLoadingData(true);
         try {
-            const hash = await promise;
-            toast.success("Transaction submitted!", {
-                id: toastId,
-                description: `Tx Hash: ${hash.slice(0, 10)}...`
-            });
-            return hash;
-        } catch (err: any) {
-            console.error(err);
-            toast.error("Transaction Failed", {
-                id: toastId,
-                description: err.message?.slice(0, 100) || "Unknown error"
-            });
-            throw err;
-        }
+            const endpoint = `/api/admin/keys`;
+            const res = await axios.get(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+            setApiKeys(res.data);
+        } catch (err) { handleError(err); }
+        finally { setIsLoadingData(false); }
     };
 
-    const handlePauseToggle = () => {
-        wrapTx(writeContractAsync({
-            address: VAULT_ADDRESS,
-            abi: VAULT_ABI,
-            functionName: isPaused ? 'unpause' : 'pause',
-        }), isPaused ? 'Unpausing Vault' : 'Pausing Vault');
-    };
-
-    const handleWithdraw = async () => {
-        if (!withdrawAddress || !withdrawAmount) return;
-
-        const promise = isERC20Withdraw && withdrawTokenAddress
-            ? writeContractAsync({
-                address: VAULT_ADDRESS,
-                abi: VAULT_ABI,
-                functionName: 'withdrawERC20',
-                args: [withdrawTokenAddress as `0x${string}`, withdrawAddress as `0x${string}`, parseEther(withdrawAmount)],
-            })
-            : writeContractAsync({
-                address: VAULT_ADDRESS,
-                abi: VAULT_ABI,
-                functionName: 'withdrawNative',
-                args: [withdrawAddress as `0x${string}`, parseEther(withdrawAmount)],
-            });
-
-        await wrapTx(promise, 'Withdrawing Funds');
-        refetchBalance();
-    };
-
-    const handleSetMin = () => {
-        if (!newMinContribution) return;
-        wrapTx(writeContractAsync({
-            address: VAULT_ADDRESS,
-            abi: VAULT_ABI,
-            functionName: 'setMinContributionNative',
-            args: [parseEther(newMinContribution)],
-        }), 'Updating Min Contribution');
-    };
-
-    const handleSetToken = async () => {
-        if (!tokenAddress) return;
-
+    const fetchAuditLogs = async () => {
+        setIsLoadingData(true);
         try {
-            // 1. Update On-Chain
-            await wrapTx(writeContractAsync({
-                address: VAULT_ADDRESS,
-                abi: VAULT_ABI,
-                functionName: 'setTokenStatus',
-                args: [tokenAddress as `0x${string}`, tokenStatus],
-            }), 'Updating Token Status');
-
-            // 2. Sync with Database
-            const toastId = toast.loading("Syncing with database...");
-            try {
-                // If banning (tokenStatus === false), we update is_active to false.
-                // If allowing, we insert/update with details.
-                const payload = {
-                    address: tokenAddress,
-                    symbol: tokenSymbol || 'UNK', // Fallback if fetch failed
-                    name: tokenName || 'Unknown Token',
-                    decimals: Number(tokenDecimals || 18),
-                    is_native: false,
-                    is_active: tokenStatus
-                };
-
-                await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/tokens`, payload, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                toast.success("Database synced successfully", { id: toastId });
-            } catch (apiErr) {
-                console.error("Database sync failed", apiErr);
-                toast.error("On-chain success, but DB sync failed.", { id: toastId });
-            }
-
-        } catch (err) {
-            // Error handling already in wrapTx for contract, but we catch here if needed
-        }
+            const endpoint = `/api/admin/audit`;
+            const res = await axios.get(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+            setAuditLogs(res.data);
+        } catch (err) { handleError(err); }
+        finally { setIsLoadingData(false); }
     };
 
-    // Ads Management Functions
+    const fetchApiStats = async () => {
+        setIsLoadingData(true);
+        try {
+            const endpoint = `/api/admin/usage`;
+            const res = await axios.get(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+            setApiStats(res.data);
+        } catch (err) { handleError(err); }
+        finally { setIsLoadingData(false); }
+    };
+
+    const handleCreateKey = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            const res = await axios.post(
+                `/api/admin/keys`,
+                keyFormData,
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            setCreatedKey(res.data.key);
+            fetchApiKeys();
+            toast.success("API Key Generated");
+        } catch (err) { handleError(err); }
+    };
+
+    const handleUpdateKey = async (id: string, updates: any) => {
+        try {
+            await axios.put(
+                `/api/admin/keys/${id}`,
+                updates,
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            toast.success("Key updated");
+            fetchApiKeys();
+        } catch (err) { handleError(err); }
+    };
+
+    // --- Original Ads Fetcher ---
     const fetchData = async () => {
         setIsLoadingData(true);
         try {
             const endpoint = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/ads`;
             const res = await axios.get(endpoint, { headers: { Authorization: `Bearer ${token}` } });
             setAds(res.data);
-        } catch (err) {
-            console.error(err);
-            if ((err as any).response?.status === 401) {
-                setToken(null);
-                localStorage.removeItem('admin_token');
-                toast.error("Session expired. Please login again.");
-            } else {
-                toast.error("Failed to load data");
-            }
-        } finally {
-            setIsLoadingData(false);
-        }
+        } catch (err) { handleError(err); }
+        finally { setIsLoadingData(false); }
     };
 
     const handleDelete = async (id: string) => {
@@ -285,22 +178,10 @@ export default function DashboardPage() {
                         });
                         toast.success('Ad deleted successfully');
                         fetchData();
-                    } catch (err) {
-                        console.error(err);
-                        if ((err as any).response?.status === 401) {
-                            setToken(null);
-                            localStorage.removeItem('admin_token');
-                            toast.error("Session expired. Please login again.");
-                        } else {
-                            toast.error("Delete failed");
-                        }
-                    }
+                    } catch (err) { handleError(err); }
                 }
             },
-            cancel: {
-                label: 'Cancel',
-                onClick: () => { }
-            }
+            cancel: { label: 'Cancel', onClick: () => { } }
         });
     };
 
@@ -309,7 +190,6 @@ export default function DashboardPage() {
         const toastId = toast.loading("Saving changes...");
         try {
             const payload = { ...formData, id: formData.id || Date.now().toString() };
-
             await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/ads`, payload, {
                 headers: { Authorization: `Bearer ${token}` }
             });
@@ -318,29 +198,124 @@ export default function DashboardPage() {
             fetchData();
             toast.success("Saved successfully!", { id: toastId });
         } catch (err) {
-            console.error(err);
-            if ((err as any).response?.status === 401) {
-                setToken(null);
-                localStorage.removeItem('admin_token');
-                toast.error("Session expired. Please login again.", { id: toastId });
-            } else {
-                toast.error("Save failed. Check console.", { id: toastId });
-            }
+            toast.error("Save failed", { id: toastId });
+            handleError(err);
         }
+    };
+
+    const handleError = (err: any) => {
+        console.error(err);
+        if (err.response?.status === 401) {
+            setToken(null);
+            localStorage.removeItem('admin_token');
+            toast.error("Session expired");
+        } else {
+            toast.error("Operation failed");
+        }
+    };
+
+    // --- Vault Logic ---
+    const { data: isPaused } = useReadContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'paused' });
+    const { data: owner } = useReadContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'owner' });
+    const { data: minContribution } = useReadContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'minContributionNative' });
+    const { data: balanceData, refetch: refetchBalance } = useBalance({ address: VAULT_ADDRESS });
+
+    // Token Data
+    const { data: tokenData } = useReadContracts({
+        contracts: (tokenAddress && tokenAddress.startsWith('0x') && tokenAddress.length === 42) ? [
+            { address: tokenAddress as `0x${string}`, abi: erc20Abi, functionName: 'balanceOf', args: [VAULT_ADDRESS] },
+            { address: tokenAddress as `0x${string}`, abi: erc20Abi, functionName: 'decimals' },
+            { address: tokenAddress as `0x${string}`, abi: erc20Abi, functionName: 'symbol' },
+            { address: tokenAddress as `0x${string}`, abi: erc20Abi, functionName: 'name' }
+        ] : [],
+    });
+
+    const tokenBalance = tokenData?.[0]?.result;
+    const tokenDecimals = tokenData?.[1]?.result;
+    const tokenSymbol = tokenData?.[2]?.result;
+    const tokenName = tokenData?.[3]?.result;
+
+    const { writeContractAsync } = useWriteContract();
+
+    const wrapTx = async (promise: Promise<`0x${string}`>, title: string) => {
+        const toastId = toast.loading("Waiting for confirmation...", { description: title });
+        try {
+            const hash = await promise;
+            toast.success("Transaction submitted!", { id: toastId, description: `Tx Hash: ${hash.slice(0, 10)}...` });
+            return hash;
+        } catch (err: any) {
+            console.error(err);
+            toast.error("Transaction Failed", { id: toastId, description: err.message?.slice(0, 100) || "Unknown error" });
+            throw err;
+        }
+    };
+
+    const handlePauseToggle = () => {
+        wrapTx(writeContractAsync({
+            address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: isPaused ? 'unpause' : 'pause',
+        }), isPaused ? 'Unpausing Vault' : 'Pausing Vault');
+    };
+
+    const handleWithdraw = async () => {
+        if (!withdrawAddress || !withdrawAmount) return;
+        const promise = isERC20Withdraw && withdrawTokenAddress
+            ? writeContractAsync({
+                address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'withdrawERC20',
+                args: [withdrawTokenAddress as `0x${string}`, withdrawAddress as `0x${string}`, parseEther(withdrawAmount)],
+            })
+            : writeContractAsync({
+                address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'withdrawNative',
+                args: [withdrawAddress as `0x${string}`, parseEther(withdrawAmount)],
+            });
+        await wrapTx(promise, 'Withdrawing Funds');
+        refetchBalance();
+    };
+
+    const handleSetMin = () => {
+        if (!newMinContribution) return;
+        wrapTx(writeContractAsync({
+            address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'setMinContributionNative',
+            args: [parseEther(newMinContribution)],
+        }), 'Updating Min Contribution');
+    };
+
+    const handleSetToken = async () => {
+        if (!tokenAddress) return;
+        try {
+            await wrapTx(writeContractAsync({
+                address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'setTokenStatus',
+                args: [tokenAddress as `0x${string}`, tokenStatus],
+            }), 'Updating Token Status');
+
+            const toastId = toast.loading("Syncing with database...");
+            try {
+                const payload = {
+                    address: tokenAddress,
+                    symbol: tokenSymbol || 'UNK',
+                    name: tokenName || 'Unknown Token',
+                    decimals: Number(tokenDecimals || 18),
+                    is_native: false,
+                    is_active: tokenStatus
+                };
+                await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/tokens`, payload, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                toast.success("Database synced successfully", { id: toastId });
+            } catch (apiErr) {
+                toast.error("On-chain success, but DB sync failed.", { id: toastId });
+            }
+        } catch (err) { }
     };
 
     // Prevent hydration mismatch
     if (!hasHydrated) return null;
 
-    if (!token || !isConnected || !isAdmin) {
+    // Login Screen
+    if (!token || !isConnected) {
         return (
             <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center font-sans">
                 <div className="max-w-md w-full mx-4">
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="bg-white/5 border border-white/10 p-8 rounded-3xl backdrop-blur-xl"
-                    >
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white/5 border border-white/10 p-8 rounded-3xl backdrop-blur-xl">
                         <AdminLogin onLogin={setToken} />
                     </motion.div>
                 </div>
@@ -351,8 +326,6 @@ export default function DashboardPage() {
     return (
         <div className="min-h-screen bg-[#0a0a0a] text-white font-sans selection:bg-purple-500/30 overflow-x-hidden">
             <Navbar />
-
-            {/* Background Gradients */}
             <div className="fixed inset-0 z-0 pointer-events-none">
                 <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-violet-600/5 blur-[120px]" />
                 <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-blue-600/5 blur-[120px]" />
@@ -362,74 +335,40 @@ export default function DashboardPage() {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
                     <div>
                         <h1 className="text-4xl font-bold flex items-center gap-3 mb-2">
-                            Dashboard
+                            {isAdmin ? 'Admin Dashboard' : 'Developer Portal'}
                         </h1>
                         <p className="text-zinc-400">
-                            {activeTab === 'ads' ? 'Configure ad placement' : 'Manage Vault settings and funds'}
+                            {isAdmin ? 'Manage platform, vault, and users' : 'Manage your API keys and integration'}
                         </p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-4">
-                        <button
-                            onClick={() => {
-                                setToken(null);
-                                localStorage.removeItem('admin_token');
-                                toast.info("Logged out successfully");
-                            }}
-                            className="px-5 py-2.5 text-sm font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors"
-                        >
-                            Logout
-                        </button>
-                    </div>
                 </div>
 
-                <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 w-fit backdrop-blur-md mb-8">
-                    <button
-                        onClick={() => setActiveTab('ads')}
-                        className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'ads'
-                            ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/25'
-                            : 'text-zinc-400 hover:text-white hover:bg-white/5'
-                            }`}
-                    >
-                        <Megaphone size={16} />
-                        Ads
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('vault')}
-                        className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'vault'
-                            ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/25'
-                            : 'text-zinc-400 hover:text-white hover:bg-white/5'
-                            }`}
-                    >
-                        <Shield size={16} />
-                        Vault
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('contributions')}
-                        className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'contributions'
-                            ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/25'
-                            : 'text-zinc-400 hover:text-white hover:bg-white/5'
-                            }`}
-                    >
-                        <Search size={16} />
-                        Contributions
+                {/* Main Navigation */}
+                <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 w-fit backdrop-blur-md mb-8 overflow-x-auto">
+                    {isAdmin && (
+                        <>
+                            <button onClick={() => setActiveTab('ads')} className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'ads' ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/25' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}>
+                                <Megaphone size={16} /> Ads
+                            </button>
+                            <button onClick={() => setActiveTab('vault')} className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'vault' ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/25' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}>
+                                <Shield size={16} /> Vault
+                            </button>
+                        </>
+                    )}
+                    <button onClick={() => setActiveTab('api')} className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'api' ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/25' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}>
+                        <Key size={16} /> API Platform
                     </button>
                 </div>
 
-                {/* Ads Tab Content */}
+                {/* --- ADS TAB --- */}
                 {activeTab === 'ads' && (
                     <>
-                        {/* Controls */}
                         <div className="flex sm:items-center justify-end flex-col sm:flex-row gap-4 mb-8">
-                            <button
-                                onClick={() => { setFormData({}); setIsFormOpen(true); }}
-                                className="flex items-center gap-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white px-6 py-3 rounded-xl shadow-lg shadow-violet-500/20 hover:shadow-violet-500/30 transition-all font-bold active:scale-95"
-                            >
-                                <Plus size={18} />
-                                Add Ad
+                            <button onClick={() => { setFormData({}); setIsFormOpen(true); }} className="flex items-center gap-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white px-6 py-3 rounded-xl shadow-lg shadow-violet-500/20 active:scale-95 transition-all font-bold">
+                                <Plus size={18} /> Add Ad
                             </button>
                         </div>
 
-                        {/* Content Area */}
                         <div className="min-h-[300px]">
                             {isLoadingData ? (
                                 <div className="flex flex-col items-center justify-center py-20">
@@ -439,155 +378,57 @@ export default function DashboardPage() {
                             ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {ads.map((item) => (
-                                        <motion.div
-                                            layout
-                                            initial={{ opacity: 0, scale: 0.95 }}
-                                            animate={{ opacity: 1, scale: 1 }}
-                                            key={item.id}
-                                            className="group bg-white/5 border border-white/10 hover:border-violet-500/30 p-8 rounded-3xl transition-all hover:bg-white/10 relative overflow-hidden backdrop-blur-sm"
-                                        >
-                                            <div className="absolute top-0 right-0 p-8 opacity-0 group-hover:opacity-10 transition-opacity pointer-events-none">
-                                                <Megaphone size={100} />
-                                            </div>
-
+                                        <motion.div layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} key={item.id} className="group bg-white/5 border border-white/10 hover:border-violet-500/30 p-8 rounded-3xl transition-all relative overflow-hidden backdrop-blur-sm">
                                             <div className="flex justify-between items-start mb-6 relative z-10">
-                                                <div className="p-3 rounded-xl bg-blue-500/10 text-blue-400">
-                                                    <Megaphone size={24} />
-                                                </div>
-                                                <button
-                                                    onClick={() => handleDelete(item.id)}
-                                                    className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                                                >
-                                                    <Trash2 size={18} />
-                                                </button>
+                                                <div className="p-3 rounded-xl bg-blue-500/10 text-blue-400"><Megaphone size={24} /></div>
+                                                <button onClick={() => handleDelete(item.id)} className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg"><Trash2 size={18} /></button>
                                             </div>
-
                                             <div className="relative z-10">
                                                 <h3 className="text-xl font-bold text-white mb-4 line-clamp-1">{item.name || `Ad #${item.id}`}</h3>
-
-                                                <div className="space-y-4">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase ${item.isActive ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
-                                                            {item.isActive ? 'ACTIVE' : 'INACTIVE'}
-                                                        </span>
-                                                        <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase bg-blue-500/10 text-blue-400 border border-blue-500/20`}>
-                                                            {item.placement || 'both'}
-                                                        </span>
-                                                    </div>
-
-                                                    {item.contentHtml && (
-                                                        <div className="mt-4 p-4 bg-black/40 rounded-xl border border-white/5 text-xs text-zinc-500 font-mono truncate">
-                                                            {item.contentHtml}
-                                                        </div>
-                                                    )}
+                                                <div className="flex items-center gap-2 mb-4">
+                                                    <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase ${item.isActive ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>{item.isActive ? 'ACTIVE' : 'INACTIVE'}</span>
+                                                    <span className="px-2.5 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase bg-blue-500/10 text-blue-400">{item.placement || 'both'}</span>
                                                 </div>
                                             </div>
                                         </motion.div>
                                     ))}
-
                                     {ads.length === 0 && (
                                         <div className="col-span-full flex flex-col items-center justify-center py-24 text-zinc-500 bg-white/5 rounded-3xl border border-dashed border-white/10">
-                                            <div className="bg-white/5 p-4 rounded-full mb-4">
-                                                <Search size={32} className="opacity-50" />
-                                            </div>
                                             <p className="font-medium">No ads configured.</p>
-                                            <p className="text-sm opacity-60 mt-1">Create a new ad to get started.</p>
                                         </div>
                                     )}
                                 </div>
                             )}
                         </div>
 
-                        {/* Form Modal */}
                         <AnimatePresence>
                             {isFormOpen && (
                                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-                                    <motion.div
-                                        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                                        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                                        className="bg-[#0a0a0a] border border-white/10 p-8 rounded-3xl w-full max-w-lg shadow-2xl shadow-violet-500/10 relative"
-                                    >
-                                        <button
-                                            onClick={() => setIsFormOpen(false)}
-                                            className="absolute top-6 right-6 p-2 text-zinc-500 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
-                                        >
-                                            <X size={20} />
-                                        </button>
-
-                                        <h2 className="text-2xl font-bold text-white mb-8">
-                                            {formData.id ? 'Edit' : 'New'} Ad
-                                        </h2>
-
+                                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-[#0a0a0a] border border-white/10 p-8 rounded-3xl w-full max-w-lg shadow-2xl relative">
+                                        <button onClick={() => setIsFormOpen(false)} className="absolute top-6 right-6 p-2 text-zinc-500 hover:text-white"><X size={20} /></button>
+                                        <h2 className="text-2xl font-bold text-white mb-8">{formData.id ? 'Edit' : 'New'} Ad</h2>
                                         <form onSubmit={handleSave} className="space-y-6">
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 pl-1">Ad ID (Optional)</label>
-                                                    <input
-                                                        value={formData.id || ''}
-                                                        onChange={e => setFormData({ ...formData, id: e.target.value })}
-                                                        className="w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white focus:border-violet-500 outline-none transition-all font-mono text-sm"
-                                                        placeholder="Auto-assigned"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 pl-1">Name</label>
-                                                    <input
-                                                        value={formData.name || ''}
-                                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                                        className="w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white focus:border-violet-500 outline-none transition-all text-sm"
-                                                        placeholder="Home Banner"
-                                                        required
-                                                    />
-                                                </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">Name</label>
+                                                <input value={formData.name || ''} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white focus:border-violet-500 outline-none" required />
                                             </div>
                                             <div>
-                                                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 pl-1">HTML Content</label>
-                                                <textarea
-                                                    value={formData.contentHtml || ''}
-                                                    onChange={e => setFormData({ ...formData, contentHtml: e.target.value })}
-                                                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white focus:border-violet-500 outline-none transition-all h-32 font-mono text-sm"
-                                                    placeholder="<div>Ad Content...</div>"
-                                                    required
-                                                />
+                                                <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">HTML Content</label>
+                                                <textarea value={formData.contentHtml || ''} onChange={e => setFormData({ ...formData, contentHtml: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white focus:border-violet-500 outline-none h-32 font-mono text-sm" required />
                                             </div>
                                             <div className="flex items-center gap-3 p-4 rounded-xl bg-white/5 border border-white/5">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={formData.isActive || false}
-                                                    onChange={e => setFormData({ ...formData, isActive: e.target.checked })}
-                                                    className="w-5 h-5 accent-violet-500 rounded"
-                                                />
+                                                <input type="checkbox" checked={formData.isActive || false} onChange={e => setFormData({ ...formData, isActive: e.target.checked })} className="w-5 h-5 accent-violet-500 rounded" />
                                                 <span className="text-sm text-zinc-300">Ad Active?</span>
                                             </div>
                                             <div>
-                                                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 pl-1">Placement</label>
-                                                <select
-                                                    value={formData.placement || 'both'}
-                                                    onChange={e => setFormData({ ...formData, placement: e.target.value })}
-                                                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white focus:border-violet-500 outline-none transition-all [&>option]:bg-zinc-900"
-                                                >
+                                                <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">Placement</label>
+                                                <select value={formData.placement || 'both'} onChange={e => setFormData({ ...formData, placement: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white focus:border-violet-500 outline-none [&>option]:bg-zinc-900">
                                                     <option value="both">Both (Web & PDF)</option>
                                                     <option value="web">Web Only</option>
                                                     <option value="pdf">PDF Only</option>
                                                 </select>
                                             </div>
-
-                                            <div className="flex gap-4 pt-4">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setIsFormOpen(false)}
-                                                    className="flex-1 rounded-xl bg-white/5 py-3.5 text-sm font-bold text-white hover:bg-white/10 border border-white/10 transition-colors"
-                                                >
-                                                    Cancel
-                                                </button>
-                                                <button
-                                                    type="submit"
-                                                    className="flex-1 rounded-xl bg-violet-600 py-3.5 text-sm font-bold text-white hover:bg-violet-500 shadow-lg shadow-violet-500/20 transition-all active:scale-95"
-                                                >
-                                                    Save Changes
-                                                </button>
-                                            </div>
+                                            <button type="submit" className="w-full rounded-xl bg-violet-600 py-3.5 text-sm font-bold text-white hover:bg-violet-500 shadow-lg shadow-violet-500/20">Save Changes</button>
                                         </form>
                                     </motion.div>
                                 </div>
@@ -596,396 +437,270 @@ export default function DashboardPage() {
                     </>
                 )}
 
-                {/* Vault Tab Content */}
+                {/* --- VAULT TAB --- */}
                 {activeTab === 'vault' && (
                     <>
                         {!isAdmin ? (
                             <div className="flex items-center justify-center py-20">
-                                <div className="text-center p-8 bg-white/5 rounded-3xl border border-red-500/20 backdrop-blur-xl max-w-md">
-                                    <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-6">
-                                        <AlertTriangle className="text-red-500" size={32} />
-                                    </div>
+                                <div className="text-center p-8 bg-white/5 rounded-3xl border border-red-500/20 max-w-md">
+                                    <AlertTriangle className="text-red-500 mx-auto mb-4" size={32} />
                                     <h2 className="text-2xl font-bold mb-3">Restricted Area</h2>
                                     <p className="text-zinc-400">Administrator Credentials Required.</p>
                                 </div>
                             </div>
                         ) : (
                             <>
-                                {/* Balance Card */}
                                 <div className="w-full bg-gradient-to-br from-violet-900/20 to-zinc-900 border border-violet-500/20 rounded-3xl p-10 mb-10 relative overflow-hidden backdrop-blur-xl">
-                                    <div className="absolute top-0 right-0 p-10 opacity-5 pointer-events-none text-white">
-                                        <Coins size={180} />
-                                    </div>
+                                    <div className="absolute top-0 right-0 p-10 opacity-5 pointer-events-none text-white"><Coins size={180} /></div>
                                     <div className="relative z-10">
                                         <h2 className="text-sm font-medium text-violet-300 mb-3 tracking-wide uppercase">Total Vault Balance</h2>
                                         <div className="flex items-baseline gap-3 mb-2">
-                                            <span className="text-6xl font-bold text-white tracking-tight">
-                                                {balanceData ? Number(formatEther(balanceData.value)).toFixed(4) : '0.0000'}
-                                            </span>
-                                            <span className="text-2xl font-medium text-zinc-500">
-                                                {balanceData?.symbol || 'ETH'}
-                                            </span>
+                                            <span className="text-6xl font-bold text-white tracking-tight">{balanceData ? Number(formatEther(balanceData.value)).toFixed(4) : '0.0000'}</span>
+                                            <span className="text-2xl font-medium text-zinc-500">{balanceData?.symbol || 'ETH'}</span>
                                         </div>
-                                        <p className="text-sm text-zinc-400">
-                                            Funds available for withdrawal or distribution.
-                                        </p>
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    {/* Status Card */}
                                     <div className="bg-white/5 rounded-3xl border border-white/10 p-8 backdrop-blur-md">
-                                        <div className="flex items-center gap-3 mb-8">
-                                            <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-400">
-                                                <Shield size={24} />
-                                            </div>
-                                            <h2 className="text-xl font-bold">Contract Status</h2>
-                                        </div>
-
+                                        <div className="flex items-center gap-3 mb-8"><Shield className="text-blue-400" size={24} /> <h2 className="text-xl font-bold">Contract Status</h2></div>
                                         <div className="flex items-center justify-between mb-6 p-4 bg-black/20 rounded-2xl border border-white/5">
                                             <span className="text-zinc-400 text-sm font-medium">Current State</span>
-                                            <div className={`flex items-center gap-2 font-bold px-3 py-1 rounded-lg ${isPaused ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>
-                                                {isPaused ? <Lock size={14} /> : <Unlock size={14} />}
-                                                <span className="text-sm">{isPaused ? 'PAUSED' : 'ACTIVE'}</span>
+                                            <div className={`flex items-center gap-2 font-bold px-3 py-1 rounded-lg ${isPaused ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
+                                                {isPaused ? 'PAUSED' : 'ACTIVE'}
                                             </div>
                                         </div>
-
-                                        <div className="flex items-center justify-between mb-8 p-4 bg-black/20 rounded-2xl border border-white/5">
-                                            <span className="text-zinc-400 text-sm font-medium">On-Chain Owner</span>
-                                            <span className="font-mono text-xs text-zinc-300 bg-white/5 px-2 py-1 rounded">
-                                                {owner ? `${owner.slice(0, 6)}...${owner.slice(-4)}` : 'Loading...'}
-                                            </span>
-                                        </div>
-
-                                        <button
-                                            onClick={handlePauseToggle}
-                                            className={`w-full py-4 rounded-xl font-bold transition-all shadow-lg active:scale-95 ${isPaused
-                                                ? 'bg-green-600 hover:bg-green-500 text-white shadow-green-600/20'
-                                                : 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/20'
-                                                }`}
-                                        >
-                                            {isPaused ? 'Resume Contributions (Unpause)' : 'Emergency Stop (Pause)'}
-                                        </button>
+                                        <button onClick={handlePauseToggle} className={`w-full py-4 rounded-xl font-bold transition-all ${isPaused ? 'bg-green-600' : 'bg-red-600'}`}>{isPaused ? 'Unpause' : 'Pause Emergency Stop'}</button>
                                     </div>
 
-                                    {/* Withdraw Card */}
                                     <div className="bg-white/5 rounded-3xl border border-white/10 p-8 backdrop-blur-md">
-                                        <div className="flex items-center gap-3 mb-8">
-                                            <div className="p-2.5 rounded-xl bg-orange-500/10 text-orange-400">
-                                                <ArrowDownCircle size={24} />
-                                            </div>
-                                            <h2 className="text-xl font-bold">Withdraw Funds</h2>
-                                        </div>
-
+                                        <div className="flex items-center gap-3 mb-8"><ArrowDownCircle className="text-orange-400" size={24} /> <h2 className="text-xl font-bold">Withdraw Funds</h2></div>
                                         <div className="space-y-6">
-                                            <div>
-                                                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 pl-1">Recipient Address</label>
-                                                <input
-                                                    type="text"
-                                                    placeholder="0x..."
-                                                    value={withdrawAddress}
-                                                    onChange={(e) => setWithdrawAddress(e.target.value)}
-                                                    className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all font-mono text-sm"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 pl-1">Amount</label>
-                                                <input
-                                                    type="number"
-                                                    placeholder="0.0"
-                                                    value={withdrawAmount}
-                                                    onChange={(e) => setWithdrawAmount(e.target.value)}
-                                                    className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all font-mono text-sm"
-                                                />
-                                            </div>
-
-                                            <div className="flex items-center gap-3 bg-black/20 p-3 rounded-xl border border-white/5">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isERC20Withdraw}
-                                                    onChange={(e) => setIsERC20Withdraw(e.target.checked)}
-                                                    className="accent-violet-500 w-4 h-4 rounded"
-                                                />
-                                                <span className="text-sm text-zinc-400">Withdraw ERC20 Token (Standard is ETH)</span>
-                                            </div>
-
-                                            {isERC20Withdraw && (
-                                                <div className="p-4 bg-orange-500/5 border border-orange-500/10 rounded-xl animate-in fade-in slide-in-from-top-2">
-                                                    <label className="block text-xs font-bold text-orange-400/80 uppercase tracking-wider mb-2">Token Contract Address</label>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="0x..."
-                                                        value={withdrawTokenAddress}
-                                                        onChange={(e) => setWithdrawTokenAddress(e.target.value)}
-                                                        className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-orange-500 transition-all font-mono text-sm"
-                                                    />
-                                                    <p className="text-[10px] text-orange-400/60 mt-2">* Assumes 18 decimals</p>
-                                                </div>
-                                            )}
-
-                                            <div className="pt-2">
-                                                <button
-                                                    onClick={handleWithdraw}
-                                                    disabled={!withdrawAddress || !withdrawAmount}
-                                                    className="w-full py-4 rounded-xl bg-white text-black font-bold transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-white/5"
-                                                >
-                                                    Withdraw Funds
-                                                </button>
-                                            </div>
+                                            <input type="text" placeholder="Recipient 0x..." value={withdrawAddress} onChange={(e) => setWithdrawAddress(e.target.value)} className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none" />
+                                            <input type="number" placeholder="Amount" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none" />
+                                            <div className="flex items-center gap-3"><input type="checkbox" checked={isERC20Withdraw} onChange={(e) => setIsERC20Withdraw(e.target.checked)} className="accent-violet-500" /> <span className="text-sm">Withdraw ERC20?</span></div>
+                                            {isERC20Withdraw && <input type="text" placeholder="Token Address 0x..." value={withdrawTokenAddress} onChange={(e) => setWithdrawTokenAddress(e.target.value)} className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-white outline-none" />}
+                                            <button onClick={handleWithdraw} disabled={!withdrawAddress || !withdrawAmount} className="w-full py-4 rounded-xl bg-white text-black font-bold hover:bg-zinc-200 disabled:opacity-50">Withdraw</button>
                                         </div>
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
-                                    {/* Min Contribution Card */}
-                                    <div className="bg-white/5 rounded-3xl border border-white/10 p-8 backdrop-blur-md">
-                                        <div className="flex items-center gap-3 mb-8">
-                                            <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400">
-                                                <Settings size={24} />
-                                            </div>
-                                            <h2 className="text-xl font-bold">Configuration</h2>
-                                        </div>
-
-                                        <div className="mb-8 p-6 bg-black/20 rounded-2xl border border-white/5">
-                                            <div className="text-sm font-medium text-zinc-500 mb-1">Current Min Contribution</div>
-                                            <div className="font-mono text-2xl font-bold text-white tracking-tight">
-                                                {minContribution ? formatEther(minContribution) : '...'} <span className="text-lg text-zinc-600">ETH</span>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-6">
-                                            <div>
-                                                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 pl-1">New Minimum (ETH)</label>
-                                                <input
-                                                    type="number"
-                                                    placeholder="0.0001"
-                                                    value={newMinContribution}
-                                                    onChange={(e) => setNewMinContribution(e.target.value)}
-                                                    className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all font-mono text-sm"
-                                                />
-                                            </div>
-                                            <button
-                                                onClick={handleSetMin}
-                                                disabled={!newMinContribution}
-                                                className="w-full py-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold transition-all disabled:opacity-50 shadow-lg shadow-violet-600/20"
-                                            >
-                                                Update Minimum
-                                            </button>
-                                        </div>
+                                    <div className="bg-white/5 rounded-3xl border border-white/10 p-8">
+                                        <h2 className="text-xl font-bold mb-4">Configuration</h2>
+                                        <div className="mb-4">Current Min: {minContribution ? formatEther(minContribution) : '...'} ETH</div>
+                                        <input type="number" placeholder="New Min ETH" value={newMinContribution} onChange={(e) => setNewMinContribution(e.target.value)} className="w-full bg-black/20 border border-white/10 rounded-xl p-3 mb-4 text-white" />
+                                        <button onClick={handleSetMin} className="w-full bg-violet-600 py-3 rounded-xl font-bold">Update Minimum</button>
                                     </div>
 
-                                    {/* Token Allowlist Card */}
-                                    <div className="bg-white/5 rounded-3xl border border-white/10 p-8 backdrop-blur-md">
-                                        <div className="flex items-center gap-3 mb-8">
-                                            <div className="p-2.5 rounded-xl bg-pink-500/10 text-pink-400">
-                                                <Coins size={24} />
-                                            </div>
-                                            <h2 className="text-xl font-bold">ERC20 Allowlist</h2>
+                                    <div className="bg-white/5 rounded-3xl border border-white/10 p-8">
+                                        <h2 className="text-xl font-bold mb-4">ERC20 Allowlist</h2>
+                                        <input type="text" placeholder="Token Address 0x..." value={tokenAddress} onChange={(e) => setTokenAddress(e.target.value)} className="w-full bg-black/20 border border-white/10 rounded-xl p-3 mb-4 text-white" />
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <input type="checkbox" checked={tokenStatus} onChange={(e) => setTokenStatus(e.target.checked)} className="accent-pink-500" /> <span>Allowed?</span>
                                         </div>
-
-                                        <div className="space-y-6">
-                                            <div>
-                                                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 pl-1">Token Address</label>
-                                                <input
-                                                    type="text"
-                                                    placeholder="0x..."
-                                                    value={tokenAddress}
-                                                    onChange={(e) => setTokenAddress(e.target.value)}
-                                                    className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition-all font-mono text-sm"
-                                                />
-                                                {tokenAddress && tokenBalance !== undefined && (
-                                                    <div className="mt-3 p-3 bg-pink-500/5 text-xs font-mono text-pink-300 rounded-lg border border-pink-500/10">
-                                                        Vault Balance: {Number(formatUnits(tokenBalance as bigint, (tokenDecimals as number) || 18)).toFixed(4)} {tokenSymbol as string || '???'}
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            <div className="flex items-center gap-4 bg-black/20 p-1.5 rounded-xl border border-white/5">
-                                                <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer py-3 rounded-lg transition-all ${tokenStatus ? 'bg-green-500/10 text-green-400 font-bold shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}>
-                                                    <input
-                                                        type="radio"
-                                                        checked={tokenStatus === true}
-                                                        onChange={() => setTokenStatus(true)}
-                                                        className="hidden"
-                                                    />
-                                                    <span>Allow</span>
-                                                </label>
-                                                <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer py-3 rounded-lg transition-all ${!tokenStatus ? 'bg-red-500/10 text-red-400 font-bold shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}>
-                                                    <input
-                                                        type="radio"
-                                                        checked={tokenStatus === false}
-                                                        onChange={() => setTokenStatus(false)}
-                                                        className="hidden"
-                                                    />
-                                                    <span>Ban</span>
-                                                </label>
-                                            </div>
-
-                                            <button
-                                                onClick={handleSetToken}
-                                                disabled={!tokenAddress}
-                                                className="w-full py-4 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold transition-all disabled:opacity-50 shadow-lg shadow-pink-600/20"
-                                            >
-                                                Update Token Status
-                                            </button>
-                                        </div>
+                                        <button onClick={handleSetToken} className="w-full bg-pink-600 py-3 rounded-xl font-bold">Update Token Status</button>
                                     </div>
                                 </div>
                             </>
                         )}
                     </>
                 )}
-                {activeTab === 'contributions' && (
-                    <ContributionsPanel token={token} apiUrl={process.env.NEXT_PUBLIC_API_URL} />
-                )}
-            </main>
-        </div>
-    );
-}
 
-function ContributionsPanel({ token, apiUrl }: { token: string | null, apiUrl?: string }) {
-    const [txHash, setTxHash] = useState('');
-    const [statusResult, setStatusResult] = useState<any>(null);
-    const [loading, setLoading] = useState(false);
-
-    const handleVerify = async () => {
-        if (!txHash) return;
-        setLoading(true);
-        try {
-            const res = await axios.post(`${apiUrl}/api/contributions/submit`, { txHash, isAnonymous: false });
-            toast.success("Submitted", { description: res.data.message });
-            handleCheckStatus();
-        } catch (err: any) {
-            console.error(err);
-            toast.error("Submission failed", { description: err.message });
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleCheckStatus = async () => {
-        if (!txHash) return;
-        setLoading(true);
-        setStatusResult(null);
-        try {
-            const res = await axios.get(`${apiUrl}/api/contributions/status/${txHash}`);
-            setStatusResult(res.data);
-            toast.success("Status retrieved");
-        } catch (err: any) {
-            console.error(err);
-            if (err.response?.status === 404) {
-                setStatusResult({ found: false, message: "Not found in system." });
-            } else {
-                toast.error("Check failed");
-            }
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="bg-white/5 rounded-3xl border border-white/10 p-8 backdrop-blur-md">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2.5 rounded-xl bg-orange-500/10 text-orange-400">
-                        <Search size={24} />
-                    </div>
-                    <h2 className="text-xl font-bold">Inspect Transaction</h2>
-                </div>
-
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 pl-1">Transaction Hash</label>
-                        <input
-                            type="text"
-                            placeholder="0x..."
-                            value={txHash}
-                            onChange={(e) => setTxHash(e.target.value)}
-                            className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-orange-500 transition-all font-mono text-sm"
-                        />
-                    </div>
-                    <div className="flex gap-4">
-                        <button
-                            onClick={handleCheckStatus}
-                            disabled={loading || !txHash}
-                            className="flex-1 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold transition-all disabled:opacity-50"
-                        >
-                            {loading ? <Loader2 className="animate-spin mx-auto" /> : 'Check Status'}
-                        </button>
-                        <button
-                            onClick={handleVerify}
-                            disabled={loading || !txHash}
-                            className="flex-1 py-3 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold transition-all disabled:opacity-50 shadow-lg shadow-orange-600/20"
-                        >
-                            {loading ? <Loader2 className="animate-spin mx-auto" /> : 'Force Verify / Retry'}
-                        </button>
-                    </div>
-                </div>
-
-                {statusResult && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="mt-6 p-6 bg-black/30 rounded-2xl border border-white/5 font-mono text-sm overflow-hidden"
-                    >
-                        {statusResult.found ? (
-                            <div className="space-y-2">
-                                <div className="flex justify-between">
-                                    <span className="text-zinc-500">Status:</span>
-                                    <span className={`font-bold uppercase ${statusResult.status === 'confirmed' ? 'text-green-400' :
-                                        statusResult.status === 'failed' ? 'text-red-400' : 'text-yellow-400'
-                                        }`}>{statusResult.status}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-zinc-500">Source:</span>
-                                    <span className="text-white">{statusResult.source}</span>
-                                </div>
-                                {statusResult.details?.last_error && (
-                                    <div className="pt-2 border-t border-white/10 mt-2 text-red-300">
-                                        Error: {statusResult.details.last_error}
-                                    </div>
-                                )}
-                                <div className="pt-2 border-t border-white/10 mt-2 text-xs text-zinc-600 break-all">
-                                    Last Updated: {statusResult.details?.updated_at || statusResult.details?.created_at}
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="text-zinc-500 italic">
-                                {statusResult.message}
+                {/* --- API API PLATFORM SECTION --- */}
+                {activeTab === 'api' && (
+                    <div className="space-y-6">
+                        {/* Sub Navigation */}
+                        {isAdmin && (
+                            <div className="flex gap-6 border-b border-white/10 pb-4 mb-6">
+                                <button onClick={() => setApiTab('keys')} className={`text-sm font-bold pb-4 -mb-4 border-b-2 transition-colors ${apiTab === 'keys' ? 'border-violet-500 text-white' : 'border-transparent text-zinc-500 hover:text-white'}`}>API Keys</button>
+                                <button onClick={() => setApiTab('analytics')} className={`text-sm font-bold pb-4 -mb-4 border-b-2 transition-colors ${apiTab === 'analytics' ? 'border-violet-500 text-white' : 'border-transparent text-zinc-500 hover:text-white'}`}>Analytics</button>
+                                <button onClick={() => setApiTab('sla')} className={`text-sm font-bold pb-4 -mb-4 border-b-2 transition-colors ${apiTab === 'sla' ? 'border-violet-500 text-white' : 'border-transparent text-zinc-500 hover:text-white'}`}>SLA & Performance</button>
+                                <button onClick={() => setApiTab('audit')} className={`text-sm font-bold pb-4 -mb-4 border-b-2 transition-colors ${apiTab === 'audit' ? 'border-violet-500 text-white' : 'border-transparent text-zinc-500 hover:text-white'}`}>Audit Logs</button>
                             </div>
                         )}
-                    </motion.div>
-                )}
-            </div>
 
-            <div className="bg-white/5 rounded-3xl border border-white/10 p-8 backdrop-blur-md">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-400">
-                        <Shield size={24} />
+                        {/* --- KEYS TAB --- */}
+                        {apiTab === 'keys' && (
+                            <>
+                                {isAdmin && (
+                                    <div className="flex justify-end mb-6">
+                                        <button onClick={() => { setCreatedKey(null); setIsKeyModalOpen(true); }} className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-violet-500/20 active:scale-95 transition-all">
+                                            <Plus size={18} /> Issue New Key
+                                        </button>
+                                    </div>
+                                )}
+
+                                <div className="grid gap-4">
+                                    {isLoadingData ? <Loader2 className="animate-spin text-zinc-500 mx-auto" /> : apiKeys.map((key) => (
+                                        <div key={key.id} className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                                            <div>
+                                                <div className="flex items-center gap-3 mb-2">
+                                                    <div className="font-mono text-lg text-white font-bold tracking-tight">{key.prefix}•••••••••••••</div>
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${key.is_active ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                                                        {key.is_active ? 'Active' : 'Revoked'}
+                                                    </span>
+                                                    {key.abuse_flag && (
+                                                        <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-600/20 text-red-500 border border-red-500/20">
+                                                            <Ban size={10} /> BANNED
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-sm text-zinc-400 flex items-center gap-4">
+                                                    <span className="flex items-center gap-1"><Globe size={12} /> {key.environment}</span>
+                                                    <span className="flex items-center gap-1 bg-white/5 px-2 rounded text-xs text-zinc-300">{key.plan?.name || 'Free'} Plan</span>
+                                                    <span className="text-zinc-500 text-xs">ID: {key.id}</span>
+                                                </div>
+                                            </div>
+                                            {isAdmin && (
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => handleUpdateKey(key.id, { abuseFlag: !key.abuse_flag })}
+                                                        className={`p-2 rounded-lg border transition-colors ${key.abuse_flag ? 'border-red-500 text-red-400 hover:bg-red-500/10' : 'border-white/10 text-zinc-400 hover:text-white hover:bg-white/5'}`}
+                                                        title="Toggle Abuse Flag"
+                                                    >
+                                                        <AlertCircle size={18} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleUpdateKey(key.id, { isActive: !key.is_active })}
+                                                        className="p-2 text-zinc-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors border border-white/10"
+                                                        title={key.is_active ? "Revoke Key" : "Activate Key"}
+                                                    >
+                                                        {key.is_active ? <Lock size={18} /> : <Unlock size={18} />}
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                    {!isLoadingData && apiKeys.length === 0 && (
+                                        <div className="text-center py-12 text-zinc-500">No API keys found.</div>
+                                    )}
+                                </div>
+                            </>
+                        )}
+
+                        {/* --- ANALYTICS TAB --- */}
+                        {apiTab === 'analytics' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <div className="bg-white/5 border border-white/10 p-6 rounded-2xl">
+                                    <div className="text-zinc-400 text-sm font-bold mb-1">Requests (24h)</div>
+                                    <div className="text-3xl font-bold text-white">{apiStats?.metrics?.requestsToday || 0}</div>
+                                </div>
+                                <div className="bg-white/5 border border-white/10 p-6 rounded-2xl">
+                                    <div className="text-zinc-400 text-sm font-bold mb-1">Active Keys</div>
+                                    <div className="text-3xl font-bold text-emerald-400">{apiStats?.metrics?.activeKeys || 0}</div>
+                                </div>
+                                <div className="bg-white/5 border border-white/10 p-6 rounded-2xl col-span-full md:col-span-2">
+                                    <h3 className="text-lg font-bold mb-4">Top Consumers (Month)</h3>
+                                    <div className="space-y-3">
+                                        {apiStats?.topKeys?.map((k: any, i: number) => (
+                                            <div key={i} className="flex justify-between items-center bg-black/20 p-3 rounded-lg">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="font-mono text-xs bg-white/10 px-1.5 py-0.5 rounded">{k.api_keys?.prefix}...</span>
+                                                    <span className="text-sm text-zinc-300">{k.api_keys?.owner_id}</span>
+                                                </div>
+                                                <div className="font-bold text-violet-400">{k.request_count.toLocaleString()} reqs</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* --- SLA TAB --- */}
+                        {apiTab === 'sla' && (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="bg-white/5 border border-white/10 p-8 rounded-3xl relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-6 opacity-5"><Activity size={100} /></div>
+                                    <h3 className="text-zinc-400 font-bold mb-2">P50 Latency</h3>
+                                    <div className="text-4xl font-bold text-white">{apiStats?.sla?.p50_latency || 0}ms</div>
+                                </div>
+                                <div className="bg-white/5 border border-white/10 p-8 rounded-3xl relative overflow-hidden">
+                                    <h3 className="text-zinc-400 font-bold mb-2">P95 Latency</h3>
+                                    <div className="text-4xl font-bold text-yellow-400">{apiStats?.sla?.p95_latency || 0}ms</div>
+                                </div>
+                                <div className="bg-white/5 border border-white/10 p-8 rounded-3xl relative overflow-hidden">
+                                    <h3 className="text-zinc-400 font-bold mb-2">Failure Rate</h3>
+                                    <div className="text-4xl font-bold text-red-400">{apiStats?.sla?.failure_count || 0}</div>
+                                    <p className="text-xs text-zinc-500 mt-2">Jobs failed in last 24h</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* --- AUDIT TAB --- */}
+                        {apiTab === 'audit' && (
+                            <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+                                <table className="w-full text-left">
+                                    <thead className="bg-white/5 text-zinc-400 text-xs uppercase tracking-wider">
+                                        <tr>
+                                            <th className="p-4">Time</th>
+                                            <th className="p-4">Action</th>
+                                            <th className="p-4">Target</th>
+                                            <th className="p-4">Metadata</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5 text-sm">
+                                        {auditLogs.map((log) => (
+                                            <tr key={log.id} className="hover:bg-white/5 transition-colors">
+                                                <td className="p-4 font-mono text-zinc-500">{new Date(log.created_at).toLocaleString()}</td>
+                                                <td className="p-4 font-bold text-violet-300">{log.action}</td>
+                                                <td className="p-4 font-mono text-xs">{log.target_id}</td>
+                                                <td className="p-4 text-zinc-400 truncate max-w-xs">{JSON.stringify(log.metadata)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
-                    <h2 className="text-xl font-bold">Operational Guide</h2>
-                </div>
-                <div className="space-y-4 text-sm text-zinc-400">
-                    <p>
-                        The system now uses a <span className="text-white font-bold">Push-Based</span> architecture.
-                        Transactions are verified individually rather than scanned in blocks.
-                    </p>
-                    <ul className="list-disc pl-5 space-y-2">
-                        <li>
-                            <strong className="text-white">Pending:</strong> The system has seen the hash and is waiting for confirmations.
-                        </li>
-                        <li>
-                            <strong className="text-white">Confirmed:</strong> The event was successfully decoded and stored.
-                        </li>
-                        <li>
-                            <strong className="text-white">Failed:</strong> Verification failed (reverted, wrong contract, missing event).
-                        </li>
-                    </ul>
-                    <p className="pt-4 border-t border-white/5 mt-4">
-                        Use <strong>Force Verify</strong> if a user claims their contribution is missing.
-                    </p>
-                </div>
-            </div>
+                )}
+
+                {/* --- END API SECTION --- */}
+
+            </main>
+
+            {/* API Key Modal */}
+            <AnimatePresence>
+                {isKeyModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+                        <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-[#0a0a0a] border border-white/10 p-8 rounded-3xl w-full max-w-lg shadow-2xl relative">
+                            <button onClick={() => setIsKeyModalOpen(false)} className="absolute top-6 right-6 p-2 text-zinc-500 hover:text-white"><X size={20} /></button>
+
+                            {!createdKey ? (
+                                <>
+                                    <h2 className="text-2xl font-bold mb-6">Issue API Key</h2>
+                                    <form onSubmit={handleCreateKey} className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">Owner ID (Wallet/Email)</label>
+                                            <input value={keyFormData.ownerId} onChange={e => setKeyFormData({ ...keyFormData, ownerId: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white focus:border-violet-500 outline-none" placeholder="0x..." required />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">Plan</label>
+                                            <select value={keyFormData.planName} onChange={e => setKeyFormData({ ...keyFormData, planName: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white focus:border-violet-500 outline-none">
+                                                <option value="Free">Free</option>
+                                                <option value="Pro">Pro</option>
+                                                <option value="Enterprise">Enterprise</option>
+                                            </select>
+                                        </div>
+                                        <button type="submit" className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-3 rounded-xl mt-4">Generate Key</button>
+                                    </form>
+                                </>
+                            ) : (
+                                <div className="text-center">
+                                    <div className="mb-4 bg-green-500/10 text-green-400 p-3 rounded-xl inline-flex items-center gap-2"><Check size={20} /> Key Generated Successfully</div>
+                                    <p className="text-zinc-400 mb-4 text-sm">Copy this key now. You won't be able to see it again.</p>
+                                    <div className="bg-black border border-white/10 p-4 rounded-xl font-mono text-lg break-all mb-6 relative group">
+                                        {createdKey}
+                                        <button onClick={() => navigator.clipboard.writeText(createdKey)} className="absolute top-2 right-2 p-2 bg-white/10 rounded hover:bg-white/20"><Copy size={14} /></button>
+                                    </div>
+                                    <button onClick={() => setIsKeyModalOpen(false)} className="w-full bg-white/10 hover:bg-white/20 text-white font-bold py-3 rounded-xl">Close</button>
+                                </div>
+                            )}
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
         </div>
     );
 }
