@@ -15,22 +15,22 @@ export default function DisclaimerClient() {
         {
             title: "Not Financial or Legal Advice",
             icon: <Scale className="text-violet-400" size={24} />,
-            content: "The intelligence and documentation provided by Chain Receipt are for informational and record-keeping purposes only. No content herein constitutes financial, investment, legal, or tax advisory services. Users are responsible for their own compliance obligations."
+            content: "The intelligence and documentation provided by TxProof are for informational and record-keeping purposes only. No content herein constitutes financial, investment, legal, or tax advisory services. Users are responsible for their own compliance obligations."
         },
         {
             title: "No Warranties",
             icon: <ShieldAlert className="text-blue-400" size={24} />,
-            content: "Chain Receipt is an experimental technology suite provided 'as is' and 'as available'. We explicitly disclaim all representations and warranties, including implying warranties of merchantability, fitness for a particular purpose, and non-infringement. Code and smart contract interactions are at your own risk."
+            content: "TxProof is an experimental technology suite provided 'as is' and 'as available'. We explicitly disclaim all representations and warranties, including implying warranties of merchantability, fitness for a particular purpose, and non-infringement. Code and smart contract interactions are at your own risk."
         },
         {
             title: "Blockchain Data",
             icon: <Info className="text-emerald-400" size={24} />,
-            content: "Chain Receipt relies on public blockchain data and third-party APIs to generate receipts. While we strive for accuracy, we cannot guarantee the completeness or correctness of the data fetched from these external sources. Always verify transaction details on a block explorer. Generated reports are interpretive summaries, not authoritative blockchain records."
+            content: "TxProof relies on public blockchain data and third-party APIs to generate receipts. While we strive for accuracy, we cannot guarantee the completeness or correctness of the data fetched from these external sources. Always verify transaction details on a block explorer. Generated reports are interpretive summaries, not authoritative blockchain records."
         },
         {
             title: "Limitation of Liability",
             icon: <AlertTriangle className="text-orange-400" size={24} />,
-            content: "In no event shall Chain Receipt, its developers, or affiliates be liable for any indirect, incidental, special, consequential, or punitive damages, including without limitation, loss of profits, data, use, goodwill, or other intangible losses, resulting from your access to or use of or inability to access or use the service."
+            content: "In no event shall TxProof, its developers, or affiliates be liable for any indirect, incidental, special, consequential, or punitive damages, including without limitation, loss of profits, data, use, goodwill, or other intangible losses, resulting from your access to or use of or inability to access or use the service."
         }
     ];
 

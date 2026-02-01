@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     title: 'How Crypto Transactions Work | Technical Lifecycle',
     description: 'The complete lifecycle of a blockchain transaction: Signing, Mempool, Inclusion, and Finality. Learn what actually happens when you click send.',
     openGraph: {
-        title: 'Transaction Lifecycle Explained | Chain Receipt',
+        title: 'Transaction Lifecycle Explained | TxProof',
         description: 'From Mempool to Block: The mechanics of value transfer.',
         type: 'article',
     },
@@ -21,7 +21,7 @@ export default function HowTransactionsWork() {
         description: 'Technical breakdown of the transaction lifecycle.',
         author: {
             '@type': 'Organization',
-            name: 'Chain Receipt',
+            name: 'TxProof',
         },
         educationalLevel: 'Intermediate',
     };

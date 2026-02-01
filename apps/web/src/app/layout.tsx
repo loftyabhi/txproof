@@ -27,33 +27,33 @@ const jetbrainsMono = JetBrains_Mono({
 // No random preloads for non-critical scripts
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://chainreceipt.vercel.app'),
+  metadataBase: new URL('https://txproof.xyz'),
   verification: {
     google: 'qqKLsD62JCrHlaIcPeLmWB3jUJIZ1GiMY5-N1bN-cOM',
   },
   title: {
-    default: 'Chain Receipt | Professional Blockchain Intelligence',
-    template: '%s | Chain Receipt',
+    default: 'TxProof | Professional Blockchain Intelligence',
+    template: '%s | TxProof',
   },
   description: 'Enterprise-grade blockchain documentation. Generate audit-ready receipts for transactions on Base, Ethereum, and more. Zero data retention.',
   keywords: ['blockchain receipt', 'crypto tax tool', 'on-chain invoice', 'web3 accounting', 'base chain receipt', 'transaction semantics', 'audit transparency'],
   openGraph: {
-    title: 'Chain Receipt | Professional Blockchain Intelligence',
+    title: 'TxProof | Professional Blockchain Intelligence',
     description: 'Transform on-chain data into audit-grade documentation.',
     type: 'website',
-    siteName: 'Chain Receipt',
+    siteName: 'TxProof',
     images: [
       {
-        url: '/og/chain-receipt.png',
+        url: '/og/chain-receipt.png', // Keep old image filename if not replacing assets yet, or update if exists. Assuming keep for now.
         width: 1200,
         height: 630,
-        alt: 'Chain Receipt - Professional Blockchain Intelligence',
+        alt: 'TxProof - Professional Blockchain Intelligence',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Chain Receipt | Professional Blockchain Intelligence',
+    title: 'TxProof | Professional Blockchain Intelligence',
     description: 'Transform on-chain data into audit-grade documentation.',
     images: ['/og/chain-receipt.png'],
   },

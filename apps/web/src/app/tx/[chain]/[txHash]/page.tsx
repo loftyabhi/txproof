@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
             follow: true,
         },
         alternates: {
-            canonical: `https://chainreceipt.vercel.app/tx/${chain}/${txHash}`,
+            canonical: `https://txproof.xyz/tx/${chain}/${txHash}`,
         },
         openGraph: {
             title: `${chainName} Transaction Analysis`,
@@ -63,7 +63,7 @@ export default async function TransactionPage({ params }: Props) {
                         </h1>
                         <p className="text-lg text-zinc-400 max-w-2xl">
                             You are viewing the semantic analysis for a {chainName} transaction.
-                            Chain Receipt provides deterministic, privacy-first interpretation of on-chain data.
+                            TxProof provides deterministic, privacy-first interpretation of on-chain data.
                         </p>
                     </header>
 

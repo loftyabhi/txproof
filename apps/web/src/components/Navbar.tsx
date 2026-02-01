@@ -54,7 +54,7 @@ export function Navbar() {
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600 text-white text-2xl shadow-lg shadow-violet-500/20 transition-transform group-hover:scale-110">
                             ⚡
                         </div>
-                        <span className="text-xl font-bold tracking-tight text-white">Chain Receipt</span>
+                        <span className="text-xl font-bold tracking-tight text-white">TxProof</span>
                     </Link>
 
                     <div className="flex items-center gap-6">

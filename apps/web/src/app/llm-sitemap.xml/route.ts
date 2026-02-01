@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 export const runtime = 'edge';
 
 export async function GET() {
-    const baseUrl = 'https://chainreceipt.vercel.app';
+    const baseUrl = 'https://txproof.xyz';
 
     // High-value, content-rich pages for LLMs
     const pages = [

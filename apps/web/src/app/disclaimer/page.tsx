@@ -5,7 +5,7 @@ import { constructCanonical, generateBreadcrumbSchema } from '@/lib/seo';
 
 export const metadata: Metadata = {
     title: 'Disclaimer',
-    description: 'Usage disclaimers: Chain Receipt provides information, not advice. Non-custodial, experimental technology.',
+    description: 'Usage disclaimers: TxProof provides information, not advice. Non-custodial, experimental technology.',
     alternates: {
         canonical: constructCanonical('/disclaimer'),
     },

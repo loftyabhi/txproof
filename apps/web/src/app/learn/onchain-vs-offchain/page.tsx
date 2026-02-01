@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     title: 'On-Chain vs Off-Chain | Hybrid Architectures',
     description: 'Understanding the boundary of trust, the Oracle Problem, and why most dApps are actually hybrid systems.',
     openGraph: {
-        title: 'On-Chain vs Off-Chain | Chain Receipt Learning',
+        title: 'On-Chain vs Off-Chain | TxProof Learning',
         description: 'Where does your NFT actually live? The trade-offs between blockchain security and real-world efficiency.',
         type: 'article',
     },
@@ -21,7 +21,7 @@ export default function OnChainVsOffChain() {
         description: 'Technical comparison of on-chain consensus and off-chain computation/storage.',
         author: {
             '@type': 'Organization',
-            name: 'Chain Receipt',
+            name: 'TxProof',
         },
         educationalLevel: 'Expert',
     };

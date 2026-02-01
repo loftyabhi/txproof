@@ -17,7 +17,39 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3001;
 
-app.use(cors());
+const allowedOrigins = [
+    'https://txproof.xyz',
+    'https://api.txproof.xyz', // Playground
+    'http://localhost:3000',
+    'http://localhost:3001'
+];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true
+}));
+
+// Host Header Guard to protect backend.txproof.xyz (Internal Only)
+app.use((req: Request, res: Response, next: NextFunction) => {
+    const host = req.get('host');
+    if (host === 'backend.txproof.xyz') {
+        const origin = req.get('origin');
+        // Retrieve internal secret from header or strictly block browsers (Origin present)
+        // If Origin is present, it's likely a browser.
+        if (origin) {
+            res.status(403).json({ error: 'Direct browser access to backend interface is forbidden.' });
+            return;
+        }
+    }
+    next();
+});
 app.use(express.json());
 
 import { supabase } from './lib/supabase';
@@ -330,5 +362,5 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 app.listen(port, () => {
-    console.log(`⚡ Chain Receipt API running on port ${port} (SafeQueue Mode)`);
+    console.log(`⚡ TxProof API running on port ${port} (SafeQueue Mode)`);
 });

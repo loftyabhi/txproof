@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     title: 'State & Data Structures | Blockchain Internals',
     description: 'Deep dive into Merkle Patricia Tries, the World State, and why blockchains prioritize verification over raw performance.',
     openGraph: {
-        title: 'State & Data Structures | Chain Receipt Learning',
+        title: 'State & Data Structures | TxProof Learning',
         description: 'How Ethereum stores data: The Merkle Patricia Trie, State Roots, and the cost of verifiability.',
         type: 'article',
     },
@@ -21,7 +21,7 @@ export default function StateAndDataStructures() {
         description: 'Technical explanation of Merkle Trees, Patricia Tries, and the State Verification Trilemma.',
         author: {
             '@type': 'Organization',
-            name: 'Chain Receipt',
+            name: 'TxProof',
         },
         educationalLevel: 'Expert',
     };

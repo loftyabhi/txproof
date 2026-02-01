@@ -49,7 +49,7 @@ export function ConsentBanner() {
                 <div className="text-sm text-zinc-400">
                     <p className="font-medium text-white mb-1">Privacy-first analytics</p>
                     <p>
-                        We use anonymous analytics to improve Chain Receipt. No wallets, no transactions, no personal data.
+                        We use anonymous analytics to improve TxProof. No wallets, no transactions, no personal data.
                     </p>
                 </div>
                 <div className="flex gap-3 shrink-0">

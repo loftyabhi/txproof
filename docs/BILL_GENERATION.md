@@ -16,7 +16,9 @@ The Bill Generation system has been migrated from a server-side Puppeteer archit
     4.  Triggers `window.print()` automatically.
 
 ### Backend (Node.js/Express)
-*   **Endpoint**: `GET /api/v1/bills/:billId/data`
+*   **Endpoints**:
+    1.  `POST /api/v1/bills/resolve` (Primary Trigger - Rate Limited)
+    2.  `GET /api/v1/bills/:billId/data` (Self-Healing - Rate Limited)
 *   **Duties**:
     1.  Checks Supabase Storage for existing Bill JSON.
     2.  If missing, triggers **Soft Queue** Job (Idempotent).

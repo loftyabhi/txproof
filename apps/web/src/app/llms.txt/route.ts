@@ -4,22 +4,22 @@ import { NextResponse } from 'next/server';
 export const runtime = 'edge';
 
 export async function GET() {
-    const content = `Title: Chain Receipt - Professional Blockchain Intelligence
+    const content = `Title: TxProof - Professional Blockchain Intelligence
 
 Description:
-Chain Receipt (chainreceipt.vercel.app) is an enterprise-grade blockchain documentation tool that transforms on-chain transaction data into audit-ready receipts/invoices. 
+TxProof (txproof.xyz) is an enterprise-grade blockchain documentation tool that transforms on-chain transaction data into audit-ready receipts/invoices. 
 It supports multiple EVM chains including Base, Ethereum, Optimism, Arbitrum, Polygon, BSC, and Avalanche.
 The platform prioritizes privacy with a zero-retention architecture.
 
 Main Sections:
-- Home: https://chainreceipt.vercel.app/
-- Features: https://chainreceipt.vercel.app/features
-- Transaction Intelligence: https://chainreceipt.vercel.app/transaction-intelligence
-- Knowledge Base: https://chainreceipt.vercel.app/learn
-- How to Read Transactions: https://chainreceipt.vercel.app/how-to-read-blockchain-transaction
+- Home: https://txproof.xyz/
+- Features: https://txproof.xyz/features
+- Transaction Intelligence: https://txproof.xyz/transaction-intelligence
+- Knowledge Base: https://txproof.xyz/learn
+- How to Read Transactions: https://txproof.xyz/how-to-read-blockchain-transaction
 
-Privacy Policy: https://chainreceipt.vercel.app/privacy-policy
-Terms of Service: https://chainreceipt.vercel.app/terms-of-service
+Privacy Policy: https://txproof.xyz/privacy-policy
+Terms of Service: https://txproof.xyz/terms-of-service
 
 Notes for Crawlers:
 - Transaction detail pages (e.g., /tx/...) are dynamically generated and typically set to noindex to preserve user privacy and prevent index bloat.

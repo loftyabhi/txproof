@@ -333,7 +333,7 @@ export default function SupportClient() {
                             transition={{ delay: 0.1 }}
                             className="max-w-2xl mx-auto text-lg text-zinc-400 leading-relaxed"
                         >
-                            Chain Receipt operates as a free public good, sustained by ethical advertising and community grants. Your contributions ensure the platform remains accessible to all.
+                            TxProof operates as a free public good, sustained by ethical advertising and community grants. Your contributions ensure the platform remains accessible to all.
                         </motion.p>
                     </div>
 

@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     title: 'Bridges & L2s Explained | Scaling Ethereum',
     description: 'Understanding Layer 2 scaling solutions (Rollups) and Cross-Chain Bridges. How we scale blockchains without sacrificing security.',
     openGraph: {
-        title: 'Bridges & Layer 2s | Chain Receipt Learning',
+        title: 'Bridges & Layer 2s | TxProof Learning',
         description: 'Optimism, Base, Arbitrum, and the future of scaling.',
         type: 'article',
     },
@@ -21,7 +21,7 @@ export default function BridgesAndL2s() {
         description: 'Technical overview of L2 rollups and bridging mechanisms.',
         author: {
             '@type': 'Organization',
-            name: 'Chain Receipt',
+            name: 'TxProof',
         },
         educationalLevel: 'Intermediate',
     };

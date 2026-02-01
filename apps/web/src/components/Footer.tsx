@@ -79,7 +79,7 @@ export function Footer() {
                             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600 text-white text-2xl shadow-lg shadow-violet-500/20 transition-transform group-hover:scale-110">
                                 ⚡
                             </div>
-                            <span className="text-xl font-bold tracking-tight text-white">Chain Receipt</span>
+                            <span className="text-xl font-bold tracking-tight text-white">TxProof</span>
                         </Link>
                         <p className="text-sm text-gray-400 leading-relaxed">
                             Professional Blockchain Intelligence. Audit-grade documentation for the decentralized economy.
@@ -97,6 +97,11 @@ export function Footer() {
                             <li>
                                 <Link href="/learn" className="text-sm text-gray-400 hover:text-violet-400 transition-colors">
                                     Knowledge Base
+                                </Link>
+                            </li>
+                            <li>
+                                <Link href="/docs" className="text-sm text-gray-400 hover:text-violet-400 transition-colors">
+                                    Developer API
                                 </Link>
                             </li>
                             <li>
@@ -164,7 +169,7 @@ export function Footer() {
 
                 <div className="border-t border-white/10 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
                     <p className="text-sm text-gray-500">
-                        &copy; {new Date().getFullYear()} Chain Receipt. All rights reserved.
+                        &copy; {new Date().getFullYear()} TxProof. All rights reserved.
                     </p>
                     <div className="flex items-center gap-6">
                         <Link href="https://github.com/loftyabhi" aria-label="Visit GitHub Profile" className="text-gray-400 hover:text-violet-400 transition-colors transform hover:scale-110">
@@ -179,6 +184,6 @@ export function Footer() {
                     </div>
                 </div>
             </div>
-        </footer>
+        </footer >
     );
 }

@@ -56,6 +56,18 @@ const nextConfig = {
             exclude: ['error', 'warn'],
         } : false,
     },
+    async rewrites() {
+        return [
+            {
+                source: '/docs',
+                destination: 'http://localhost:3002/docs',
+            },
+            {
+                source: '/docs/:path*',
+                destination: 'http://localhost:3002/docs/:path*',
+            },
+        ]
+    },
 };
 
 export default withBundleAnalyzer(nextConfig);

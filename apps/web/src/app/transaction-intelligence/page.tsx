@@ -20,7 +20,7 @@ const breadcrumbs = [
 
 const faqs = [
     { question: 'Can I use these reports for tax filing?', answer: 'These receipts serve as detailed transaction documentation (Section 404/compliance support) but do not replace professional tax advice or official exchange statements.' },
-    { question: 'Is my wallet address stored?', answer: 'No. Chain Receipt performs analysis on-demand (client-side and state-less API) and does not maintain a database of user transaction histories or PII.' },
+    { question: 'Is my wallet address stored?', answer: 'No. TxProof performs analysis on-demand (client-side and state-less API) and does not maintain a database of user transaction histories or PII.' },
     { question: 'What happens if the API is down?', answer: 'Since our analysis is deterministic and based on public blockchain data, any transaction can be re-analyzed at any time to generate the exact same receipt, ensuring redundancy.' },
 ];
 
@@ -88,7 +88,7 @@ export default function TransactionIntelligence() {
                         <div className="p-6 rounded-2xl bg-white/5 border border-white/10">
                             <h3 className="font-bold text-white mb-2">Is my wallet address stored?</h3>
                             <p className="text-zinc-400 text-sm leading-relaxed">
-                                No. Chain Receipt performs analysis on-demand (client-side and state-less API) and does not maintain a database of user transaction histories or PII.
+                                No. TxProof performs analysis on-demand (client-side and state-less API) and does not maintain a database of user transaction histories or PII.
                             </p>
                         </div>
                         <div className="p-6 rounded-2xl bg-white/5 border border-white/10">
@@ -108,7 +108,7 @@ export default function TransactionIntelligence() {
                     <div className="relative z-10 max-w-2xl mx-auto">
                         <h2 className="text-3xl font-bold text-white mb-6">Ready for Audit-Grade Insights?</h2>
                         <p className="text-lg text-zinc-400 mb-10">
-                            Join thousands of users relying on Chain Receipt for accurate, privacy-focused blockchain documentation.
+                            Join thousands of users relying on TxProof for accurate, privacy-focused blockchain documentation.
                         </p>
 
                         <Link href="/" className="inline-flex items-center gap-2 bg-white text-black px-8 py-4 rounded-xl font-bold hover:bg-zinc-200 transition-colors shadow-lg shadow-white/10 active:scale-95">

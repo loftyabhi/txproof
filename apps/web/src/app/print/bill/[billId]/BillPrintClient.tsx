@@ -45,7 +45,7 @@ export default function BillPrintClient() {
     // Set document title for PDF filename to match URL ID
     useEffect(() => {
         if (billId) {
-            document.title = `Chain Receipt - ${billId}`;
+            document.title = `TxProof - ${billId}`;
         }
     }, [billId]);
 
@@ -136,7 +136,7 @@ export default function BillPrintClient() {
                 {/* Fixed Running Footer */}
                 <div className="running-footer">
                     <div className="flex items-center gap-2">
-                        <span>⚡ Chain Receipt</span>
+                        <span>⚡ TxProof</span>
                         <span className="text-gray-300">|</span>
                         <span>{data.BILL_ID}</span>
                     </div>
@@ -153,7 +153,7 @@ export default function BillPrintClient() {
                                         <div className="brand">
                                             <div className="brand-icon">⚡</div>
                                             <div className="brand-info">
-                                                <h1>Chain Receipt</h1>
+                                                <h1>TxProof</h1>
                                                 <div className="brand-tagline">Professional Blockchain Intelligence</div>
                                             </div>
                                         </div>
@@ -505,7 +505,7 @@ export default function BillPrintClient() {
                                                 <a href={data.CONTACT_URL} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-text-secondary)', textDecoration: 'none', marginRight: '12px', fontSize: '10px', fontWeight: '600' }}>Contact Us</a>
                                             </div>
                                             <span style={{ fontSize: '8px', color: 'var(--color-text-tertiary)' }}>
-                                                © {data.CURRENT_YEAR} Chain Receipt. Data from {data.CHAIN_NAME}.<br />
+                                                © {data.CURRENT_YEAR} TxProof. Data from {data.CHAIN_NAME}.<br />
                                                 USD values are estimates at time of transaction.
                                             </span>
                                         </div>

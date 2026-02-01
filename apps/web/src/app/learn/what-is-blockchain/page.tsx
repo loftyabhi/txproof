@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     title: 'What is a Blockchain? | Authoritative Definition',
     description: 'An expert explanation of blockchain mechanics, state machines, and consensus. Beyond the hype: understanding distributed coordination.',
     openGraph: {
-        title: 'What is a Blockchain? | Chain Receipt Learning',
+        title: 'What is a Blockchain? | TxProof Learning',
         description: 'Trust, coordination, and the deterministic state machine.',
         type: 'article',
     },
@@ -21,7 +21,7 @@ export default function WhatIsBlockchain() {
         description: 'Comprehensive technical explanation of distributed ledger technology.',
         author: {
             '@type': 'Organization',
-            name: 'Chain Receipt',
+            name: 'TxProof',
         },
         educationalLevel: 'Beginner',
     };

@@ -23,7 +23,7 @@ export function AdminLogin({ onLogin }: AdminLoginProps) {
 
         try {
             // 1. Get Nonce (Simulated for this MVP, normally fetch from backend)
-            const nonce = `Sign this message to login to Chain Receipt Manager.\nNonce: ${Date.now()}`;
+            const nonce = `Sign this message to login to TxProof Manager.\nNonce: ${Date.now()}`;
 
             // 2. Sign Message
             const signature = await signMessageAsync({ message: nonce });

@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     title: 'NFTs Explained | ERC-721 & Digital Ownership',
     description: 'A technical guide to Non-Fungible Tokens. Understand ERC-721 standards, metadata storage, and the real utility of digital ownership beyond art.',
     openGraph: {
-        title: 'NFTs Explained | Chain Receipt Learning',
+        title: 'NFTs Explained | TxProof Learning',
         description: 'Unique digital identifiers on the blockchain. A comprehensive technical overview.',
         type: 'article',
     },
@@ -21,7 +21,7 @@ export default function NFTsExplained() {
         description: 'Technical analysis of unique digital assets, standards, and ecosystem mechanics.',
         author: {
             '@type': 'Organization',
-            name: 'Chain Receipt',
+            name: 'TxProof',
         },
         educationalLevel: 'Intermediate',
     };

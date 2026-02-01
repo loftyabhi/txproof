@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     title: 'MEV & Transaction Ordering | The Invisible Tax',
     description: 'Understanding Maximal Extractable Value (MEV), sandwich attacks, and how bots fight for position in the Dark Forest.',
     openGraph: {
-        title: 'MEV & Transaction Ordering | Chain Receipt Learning',
+        title: 'MEV & Transaction Ordering | TxProof Learning',
         description: 'Front-running, Back-running, and the hidden economy of block production.',
         type: 'article',
     },
@@ -21,7 +21,7 @@ export default function MevAndTransactionOrdering() {
         description: 'Technical explanation of MEV, mempools, and transaction supply chains.',
         author: {
             '@type': 'Organization',
-            name: 'Chain Receipt',
+            name: 'TxProof',
         },
         educationalLevel: 'Advanced',
     };

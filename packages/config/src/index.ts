@@ -1,2 +1,2 @@
-export const APP_NAME = "Chain Receipt";
+export const APP_NAME = "TxProof";
 export const DEFAULT_PAGE_SIZE = 20;

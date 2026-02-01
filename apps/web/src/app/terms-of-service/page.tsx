@@ -5,7 +5,7 @@ import { constructCanonical, generateBreadcrumbSchema } from '@/lib/seo';
 
 export const metadata: Metadata = {
     title: 'Terms of Service',
-    description: 'Terms and conditions for using the Chain Receipt platform. By using our service, you agree to these legal terms.',
+    description: 'Terms and conditions for using the TxProof platform. By using our service, you agree to these legal terms.',
     alternates: {
         canonical: constructCanonical('/terms-of-service'),
     },

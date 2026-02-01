@@ -89,12 +89,12 @@ ${message}
                 </div>
                 <hr style="margin-top: 30px; border: 0; border-top: 1px solid #eee;">
                 <p style="font-size: 12px; color: #666;">
-                    Sent securely via Chain Receipt Contact Form.<br>
+                    Sent securely via TxProof Contact Form.<br>
                     Click "Reply" to respond directly to the user.
                 </p>
             </div>
         `,
-            displayFrom: "Chain Receipt Contact"
+            displayFrom: "TxProof Contact"
         });
 
         return NextResponse.json(

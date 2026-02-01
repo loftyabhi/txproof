@@ -24,8 +24,8 @@ export default function robots(): MetadataRoute.Robots {
       },
     ],
     sitemap: [
-      'https://chainreceipt.vercel.app/sitemap.xml',
-      'https://chainreceipt.vercel.app/llm-sitemap.xml',
+      'https://txproof.xyz/sitemap.xml',
+      'https://txproof.xyz/llm-sitemap.xml',
     ],
   };
 }

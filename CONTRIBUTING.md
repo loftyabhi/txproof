@@ -1,4 +1,4 @@
-# Contributing to Chain Receipt
+# Contributing to TxProof
 
 Thank you for your interest in contributing! This project is a **Monorepo** managed by npm workspaces.
 

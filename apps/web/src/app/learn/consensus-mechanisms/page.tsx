@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     title: 'Consensus Mechanisms | PoW vs PoS',
     description: 'Deep dive into how blockchains agree on truth. Proof of Work, Proof of Stake, Fork Choice Rules, and Slashing.',
     openGraph: {
-        title: 'Consensus Mechanisms | Chain Receipt Learning',
+        title: 'Consensus Mechanisms | TxProof Learning',
         description: 'The engine of blockchain truth. Why we switched from mining to staking.',
         type: 'article',
     },
@@ -21,7 +21,7 @@ export default function ConsensusMechanisms() {
         description: 'Technical comparison of Proof of Work and Proof of Stake, focusing on Sybil resistance and Fork Choice rules.',
         author: {
             '@type': 'Organization',
-            name: 'Chain Receipt',
+            name: 'TxProof',
         },
         educationalLevel: 'Expert',
     };

@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: Chain Receipt API
+  title: TxProof API
   description: |
     # Enterprise API for Blockchain Receipt Generation
 
@@ -29,14 +29,14 @@ info:
   version: 1.0.0
   contact:
     name: Sarkaritool Mail
-    email: sarkaritoolmail@gmail.com
-    url: https://chainreceipt.vercel.app/contact-us
+    email: support@txproof.xyz
+    url: https://txproof.xyz/contact-us
   license:
     name: Proprietary
-    url: https://chainreceipt.vercel.app/terms-of-service
+    url: https://txproof.xyz/terms-of-service
 
 servers:
-  - url: https://gchain-receipt.onrender.com/api/v1
+  - url: https://api.txproof.xyz/api/v1
     description: Production API Gateway
 
 # ------------------------------------------------------------------------------

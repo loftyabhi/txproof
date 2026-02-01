@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     title: 'DAO & Governance | On-Chain Coordination',
     description: 'Understanding Decentralized Autonomous Organizations (DAOs), voting systems, and the risks of on-chain governance.',
     openGraph: {
-        title: 'DAO & Governance | Chain Receipt Learning',
+        title: 'DAO & Governance | TxProof Learning',
         description: 'How code replaces corporate charters. Token voting, delegation, and attacks.',
         type: 'article',
     },
@@ -21,7 +21,7 @@ export default function DaoAndGovernance() {
         description: 'Technical deep dive into DAO governance mechanisms and vectors of attack.',
         author: {
             '@type': 'Organization',
-            name: 'Chain Receipt',
+            name: 'TxProof',
         },
         educationalLevel: 'Expert',
     };

@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     title: 'What is a Smart Contract? | Technical Deep Dive',
     description: 'Understand smart contracts as unstoppable applications. Explore the vending machine analogy, their immutable nature, and how they run on the EVM.',
     openGraph: {
-        title: 'Smart Contracts Explained | Chain Receipt Learning',
+        title: 'Smart Contracts Explained | TxProof Learning',
         description: 'Code is Law. A technical deep dive into deterministic, decentralized applications.',
         type: 'article',
     },
@@ -21,7 +21,7 @@ export default function WhatIsSmartContract() {
         description: 'A technical overview of smart contracts, their properties, and execution model.',
         author: {
             '@type': 'Organization',
-            name: 'Chain Receipt',
+            name: 'TxProof',
         },
         educationalLevel: 'Intermediate',
     };

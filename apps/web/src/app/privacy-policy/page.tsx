@@ -5,7 +5,7 @@ import { constructCanonical, generateBreadcrumbSchema } from '@/lib/seo';
 
 export const metadata: Metadata = {
     title: 'Privacy Policy',
-    description: 'Chain Receipt is committed to deterministic, privacy-first blockchain intelligence. We do not collect PII or private keys.',
+    description: 'TxProof is committed to deterministic, privacy-first blockchain intelligence. We do not collect PII or private keys.',
     alternates: {
         canonical: constructCanonical('/privacy-policy'),
     },
@@ -36,14 +36,14 @@ export default function PrivacyPolicy() {
                     <h1 className="text-4xl font-bold text-white mb-4">Privacy Policy</h1>
                     <p className="text-lg text-zinc-400">
                         Effective Date: January 07, 2026<br />
-                        Chain Receipt is committed to deterministic, privacy-first blockchain intelligence.
+                        TxProof is committed to deterministic, privacy-first blockchain intelligence.
                     </p>
                 </header>
 
                 <section className="space-y-4">
                     <h2 className="text-2xl font-semibold text-white">1. Core Principle: No PII</h2>
                     <p>
-                        Chain Receipt is designed as a "Privacy-First" platform. We specifically <strong>do not</strong> collect, store, or process:
+                        TxProof is designed as a "Privacy-First" platform. We specifically <strong>do not</strong> collect, store, or process:
                     </p>
                     <ul className="list-disc pl-5 space-y-2">
                         <li>Personal Identification Information (Names, Emails, IP Addresses connected to identity).</li>

@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     title: 'Blockspace & Scalability Economics',
     description: 'Understanding the scarce resource of blockspace, the economics of gas fees, and the necessity of Layer 2 scaling.',
     openGraph: {
-        title: 'Blockspace Economics | Chain Receipt Learning',
+        title: 'Blockspace Economics | TxProof Learning',
         description: 'Why blockchains are slow by design, and how Rollups increase throughput without sacrificing decentralization.',
         type: 'article',
     },
@@ -21,7 +21,7 @@ export default function BlockspaceAndScalability() {
         description: 'Technical analysis of blockchain resource constraints, gas markets, and scaling strategies.',
         author: {
             '@type': 'Organization',
-            name: 'Chain Receipt',
+            name: 'TxProof',
         },
         educationalLevel: 'Expert',
     };

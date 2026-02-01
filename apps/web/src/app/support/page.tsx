@@ -5,7 +5,7 @@ import { constructCanonical, generateBreadcrumbSchema } from '@/lib/seo';
 
 export const metadata: Metadata = {
     title: 'Support the Ecosystem',
-    description: 'Contribute to the public infrastructure of Chain Receipt. Community-powered, open-source aligned, and transparent.',
+    description: 'Contribute to the public infrastructure of TxProof. Community-powered, open-source aligned, and transparent.',
     alternates: {
         canonical: constructCanonical('/support'),
     },

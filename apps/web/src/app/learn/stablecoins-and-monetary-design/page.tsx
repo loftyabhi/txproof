@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     title: 'Stablecoins & Monetary Design | Blockchain Economics',
     description: 'Deep dive into stablecoin architectures: Fiat-backed, Crypto-backed, and Algorithmic. Understanding peg mechanics and the stablecoin trilemma.',
     openGraph: {
-        title: 'Stablecoins | Chain Receipt Learning',
+        title: 'Stablecoins | TxProof Learning',
         description: 'How we engineer stability in a volatile ecosystem. The economics of digital money.',
         type: 'article',
     },
@@ -21,7 +21,7 @@ export default function StablecoinsAndMonetaryDesign() {
         description: 'Technical analysis of stablecoin stability mechanisms and economic trade-offs.',
         author: {
             '@type': 'Organization',
-            name: 'Chain Receipt',
+            name: 'TxProof',
         },
         educationalLevel: 'Expert',
     };

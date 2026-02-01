@@ -90,7 +90,7 @@ export default function FeaturesClient() {
                         </h1>
 
                         <p className="text-xl text-zinc-400 leading-relaxed max-w-2xl mx-auto">
-                            Chain Receipt provides deterministic, privacy-first blockchain documentation infrastructure. We transform raw on-chain data into audit-ready financial records without compromising user privacy or relying on centralized storage.
+                            TxProof provides deterministic, privacy-first blockchain documentation infrastructure. We transform raw on-chain data into audit-ready financial records without compromising user privacy or relying on centralized storage.
                         </p>
                     </motion.div>
                 </div>
@@ -170,7 +170,7 @@ export default function FeaturesClient() {
                             </div>
                             <h3 className="text-xl font-bold text-white mb-4">Core Transaction Intelligence</h3>
                             <p className="text-zinc-400 text-sm mb-6 leading-relaxed">
-                                The foundation of Chain Receipt: deterministic, audit-oriented transaction interpretation built directly on public blockchain data.
+                                The foundation of TxProof: deterministic, audit-oriented transaction interpretation built directly on public blockchain data.
                             </p>
                             <ul className="space-y-3">
                                 {[
@@ -279,7 +279,7 @@ export default function FeaturesClient() {
                     <div className="space-y-4">
                         {[
                             {
-                                q: "Is Chain Receipt free to use?",
+                                q: "Is TxProof free to use?",
                                 a: "Base features including single transaction analysis and standard PDF downloads are free. Advanced features and API access may require a subscription."
                             },
                             {
@@ -288,7 +288,7 @@ export default function FeaturesClient() {
                             },
                             {
                                 q: "Is my data stored?",
-                                a: "No. Chain Receipt operates on a privacy-first, client-side model. We analyze on-chain data on-demand and do not store your transaction history."
+                                a: "No. TxProof operates on a privacy-first, client-side model. We analyze on-chain data on-demand and do not store your transaction history."
                             },
                             {
                                 q: "Can I use the API for my application?",

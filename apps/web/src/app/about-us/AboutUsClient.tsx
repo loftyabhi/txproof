@@ -39,7 +39,7 @@ export default function AboutUsClient() {
                         Building the Future of Web3 Compliance
                     </div>
                     <h1 className="text-4xl md:text-6xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-white to-white/60 mb-6 tracking-tight">
-                        About Chain Receipt
+                        About TxProof
                     </h1>
                     <p className="text-zinc-400 text-lg md:text-xl leading-relaxed">
                         Bridging the gap between decentralized ledgers and enterprise accounting.
@@ -142,7 +142,7 @@ export default function AboutUsClient() {
                                     </div>
                                 </div>
                                 <p className="text-zinc-300 text-lg mb-4">
-                                    Chain Receipt is built and maintained by <span className="text-white font-semibold">loftyabhi</span>.
+                                    TxProof is built and maintained by <span className="text-white font-semibold">loftyabhi</span>.
                                 </p>
                                 <p className="text-zinc-500 max-w-lg mx-auto">
                                     A dedicated developer focused on building essential, privacy-preserving Web3 infrastructure.

@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     title: 'What is the EVM? | Ethereum Virtual Machine Explained',
     description: 'Technical explanation of the Ethereum Virtual Machine (EVM), gas mechanics, and how smart contracts are executed.',
     openGraph: {
-        title: 'EVM Architecture | Chain Receipt Learning',
+        title: 'EVM Architecture | TxProof Learning',
         description: 'Understand the world computer: Stack, Memory, and Storage.',
         type: 'article',
     },
@@ -21,7 +21,7 @@ export default function EthereumAndEVM() {
         description: 'Deep dive into the Ethereum Virtual Machine architecture.',
         author: {
             '@type': 'Organization',
-            name: 'Chain Receipt',
+            name: 'TxProof',
         },
         educationalLevel: 'Intermediate',
     };

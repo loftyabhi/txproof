@@ -11,10 +11,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     // Set the title for the print dialog
     // The browser uses the document title as the default filename
     // Format: Chain Receipt - [Bill ID]
-    // Use 'absolute' to override the template defined in layout.tsx ('%s | Chain Receipt')
+    // Use 'absolute' to override the template defined in layout.tsx ('%s | TxProof')
     return {
         title: {
-            absolute: `Chain Receipt - ${billId}`,
+            absolute: `TxProof - ${billId}`,
         },
     };
 }

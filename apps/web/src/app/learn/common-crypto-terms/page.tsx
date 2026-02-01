@@ -21,7 +21,7 @@ export default function CommonCryptoTerms() {
         description: 'Technical glossary of blockchain terminology.',
         author: {
             '@type': 'Organization',
-            name: 'Chain Receipt',
+            name: 'TxProof',
         },
         educationalLevel: 'Expert',
     };

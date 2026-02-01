@@ -1,8 +1,8 @@
-# Chain Receipt System (Enterprise Monorepo)
+# TxProof (Enterprise Monorepo)
 
 > A production-ready system to convert blockchain transactions into professional, audit-ready PDF receipts.
 
-Chain Receipt is a full-stack application designed to generate detailed financial receipts for blockchain transactions. It is architected as a **Secure Monorepo** with strict isolation between the frontend, backend, and smart contracts.
+TxProof is a full-stack application designed to generate detailed financial receipts for blockchain transactions. It is architected as a **Secure Monorepo** with strict isolation between the frontend, backend, and smart contracts.
 
 ## 🌟 Key Features
 
@@ -25,8 +25,8 @@ This project uses a Workspace-based Monorepo structure:
 ```text
 /
 ├── apps/
-│   ├── web/                # [Next.js] Frontend (Vercel)
-│   └── api/                # [Node.js] Backend (Render)
+│   ├── web/                # [Next.js] Frontend
+│   └── api/                # [Node.js] Backend
 │
 ├── packages/
 │   ├── domain/             # Shared Types & Schemas (Zero Runtime)

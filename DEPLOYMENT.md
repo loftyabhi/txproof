@@ -1,6 +1,6 @@
 # Deployment & Infrastructure Guide
 
-This guide outlines the infrastructure requirements and steps to deploy the Chain Receipt system in its Monorepo configuration.
+This guide outlines the infrastructure requirements and steps to deploy the TxProof system in its Monorepo configuration.
 
 ## 1. Frontend (Vercel)
 
@@ -14,7 +14,7 @@ The frontend is a Next.js application located in `apps/web`.
     -   (Vercel will automatically detect `cd ../.. && npm install` logic for monorepos).
 -   **Environment Variables**:
     ```ini
-    NEXT_PUBLIC_API_URL=https://your-api.onrender.com
+    NEXT_PUBLIC_API_URL=https://api.txproof.xyz
     NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID=...
     
     # Analytics & Privacy (New)
@@ -34,7 +34,7 @@ The frontend is a Next.js application located in `apps/web`.
 
 The backend is a Node.js/Express application located in `apps/api`.
 
--   **Platform**: Render (Web Service)
+-   **Platform**: VPS / Cloud (e.g. AWS, DigitalOcean)
 -   **Runtime**: Node
 -   **Root Directory**: `.` (Repository Root)
     -   *Reason*: Render needs to see the root `package.json` to install workspace dependencies (`packages/*`).
@@ -106,8 +106,7 @@ The backend is a Node.js/Express application located in `apps/api`.
 ### B. Connect Backend to Frontend (Render -> Vercel)
 
 1.  **Get Backend URL**:
-    *   Go to your **Render Dashboard** -> Select your API Web Service.
-    *   Copy the service URL.
+    *   Get your deployed backend URL (e.g., `https://api.txproof.xyz`).
 2.  **Set Variable in Vercel**:
     *   Go to your **Vercel Dashboard** -> Select your Project -> Settings -> Environment Variables.
     *   Add/Update `NEXT_PUBLIC_API_URL` with the Render URL.

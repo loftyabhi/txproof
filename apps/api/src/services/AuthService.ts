@@ -49,7 +49,7 @@ export class AuthService {
      * Generate a random nonce message for the user to sign.
      */
     generateNonce(): string {
-        return `Sign this message to login to Chain Receipt Manager.\nNonce: ${Date.now()}-${Math.random().toString(36).substring(7)}`;
+        return `Sign this message to login to TxProof Manager.\nNonce: ${Date.now()}-${Math.random().toString(36).substring(7)}`;
     }
 
     /**

@@ -1,6 +1,6 @@
 # SaaS Platform Architecture & Implementation
 
-This document details the Enterprise SaaS API layer implemented for GChain Receipt.
+This document details the Enterprise SaaS API layer implemented for TxProof.
 
 ## 1. Core Components
 
@@ -14,12 +14,15 @@ This document details the Enterprise SaaS API layer implemented for GChain Recei
     *   `scripts/setup_saas_db.sql`: Base SaaS tables.
     *   `scripts/update_hardening.sql`: Enterprise Audit, Security & Metrics views.
 
-### Authentication & Security (`saasAuth.ts`, `ApiKeyService.ts`)
+### Authentication & Security (`saasAuth.ts`, `hybridAuth.ts`, `publicRateLimiter.ts`)
 *   **Multi-Layer Governance**:
     1.  **Validation**: Checks Active status and `abuse_flag`.
     2.  **Network**: Enforces `ip_allowlist` if configured.
+    2.  **Network**: Enforces `ip_allowlist` if configured.
     3.  **Realtime (RPS)**: In-memory/Redis Token Bucket prevents CPU spikes.
-    4.  **Monthly Quota**: Atomic DB Counter protects business limits.
+*   **Hybrid Protection**:
+    *   **Authenticated**: Full governance via `saasMiddleware`.
+    *   **Public**: IP-based strict rate limiting via `publicRateLimiter` (Standard: 30 RPM, Strict: 10 RPM).
 *   **Hashed Storage**: Raw keys are never stored. Only SHA-256 hashes.
 
 ### Enhanced Queue (`SoftQueueService.ts`)
@@ -36,7 +39,8 @@ This document details the Enterprise SaaS API layer implemented for GChain Recei
 ## 2. API Endpoints
 
 ### Public API (`v1/pdfs.ts`)
-*   **`POST /api/v1/pdfs`**: Enqueue Job. Returns `202 Accepted` immediately.
+*   **`POST /api/v1/pdfs`**: Enqueue Job. Returns `202 Accepted` immediately. (Requires Key)
+*   **`POST /api/v1/bills/resolve`**: Hybrid Endpoint. Public use is Rate Limited. Authenticated use consumes Quota.
 *   **`GET /api/v1/pdfs/:jobId`**: Poll Status. Returns State + Data.
 *   **`GET /api/v1/pdfs/by-tx/:txHash`**: Lookup by Transaction Hash.
 
@@ -58,7 +62,7 @@ This document details the Enterprise SaaS API layer implemented for GChain Recei
 
 3.  **API Usage Example**:
     ```bash
-    curl -X POST https://api.gchain.com/api/v1/pdfs \
+    curl -X POST https://api.txproof.xyz/api/v1/pdfs \
       -H "Authorization: Bearer sk_live_..." \
       -H "Content-Type: application/json" \
       -d '{ "txHash": "0x...", "chainId": 8453 }'

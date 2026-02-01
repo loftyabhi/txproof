@@ -46,7 +46,7 @@ export default function TermsOfServiceClient() {
                                 <h2 className="text-xl font-semibold text-white">1. Agreement to Terms</h2>
                             </div>
                             <p className="pl-12 border-l border-white/5 ml-3">
-                                By accessing or using Chain Receipt, you agree to be bound by these Terms of Service and all applicable laws and regulations.
+                                By accessing or using TxProof, you agree to be bound by these Terms of Service and all applicable laws and regulations.
                                 If you do not agree with any of these terms, you are prohibited from using or accessing this site.
                             </p>
                         </section>
@@ -60,14 +60,14 @@ export default function TermsOfServiceClient() {
                             </div>
                             <div className="pl-12 border-l border-white/5 ml-3 space-y-4">
                                 <p>
-                                    Permission is granted to temporarily download one copy of the materials (information or software) on Chain Receipt's website for personal,
+                                    Permission is granted to temporarily download one copy of the materials (information or software) on TxProof's website for personal,
                                     non-commercial transitory viewing only. This is the grant of a license, not a transfer of title, and under this license you may not:
                                 </p>
                                 <ul className="grid gap-2 pt-2 text-sm text-zinc-400">
                                     {[
                                         "Modify or copy the materials;",
                                         "Use the materials for any commercial purpose, or for any public display;",
-                                        "Attempt to decompile or reverse engineer any software contained on Chain Receipt's website;",
+                                        "Attempt to decompile or reverse engineer any software contained on TxProof's website;",
                                         "Remove any copyright or other proprietary notations from the materials;",
                                         "Transfer the materials to another person or 'mirror' the materials on any other server."
                                     ].map((item, i) => (
@@ -89,7 +89,7 @@ export default function TermsOfServiceClient() {
                             </div>
                             <div className="pl-12 border-l border-white/5 ml-3">
                                 <p>
-                                    The materials on Chain Receipt's website are provided on an 'as is' basis. Chain Receipt makes no warranties, expressed or implied,
+                                    The materials on TxProof's website are provided on an 'as is' basis. TxProof makes no warranties, expressed or implied,
                                     and hereby disclaims and negates all other warranties including, without limitation, implied warranties or conditions of merchantability,
                                     fitness for a particular purpose, or non-infringement of intellectual property or other violation of rights.
                                 </p>
@@ -100,9 +100,9 @@ export default function TermsOfServiceClient() {
                             <h2 className="text-xl font-semibold text-white mb-4 pl-14">4. Limitations</h2>
                             <div className="pl-12 border-l border-white/5 ml-3">
                                 <p>
-                                    In no event shall Chain Receipt or its suppliers be liable for any damages (including, without limitation, damages for loss of data or profit,
-                                    or due to business interruption) arising out of the use or inability to use the materials on Chain Receipt's website, even if Chain Receipt
-                                    or a Chain Receipt authorized representative has been notified orally or in writing of the possibility of such damage.
+                                    In no event shall TxProof or its suppliers be liable for any damages (including, without limitation, damages for loss of data or profit,
+                                    or due to business interruption) arising out of the use or inability to use the materials on TxProof's website, even if TxProof
+                                    or a TxProof authorized representative has been notified orally or in writing of the possibility of such damage.
                                 </p>
                             </div>
                         </section>
@@ -111,7 +111,7 @@ export default function TermsOfServiceClient() {
                             <h2 className="text-xl font-semibold text-white mb-4 pl-14">5. Contributions & Support</h2>
                             <div className="pl-12 border-l border-white/5 ml-3">
                                 <p>
-                                    Any contributions, donations, or financial support provided to Chain Receipt are voluntary and non-refundable. Support fees do not grant equity, voting rights, or control over the project's direction. We reserve the right to modify or discontinue any aspect of the service at any time without liability.
+                                    Any contributions, donations, or financial support provided to TxProof are voluntary and non-refundable. Support fees do not grant equity, voting rights, or control over the project's direction. We reserve the right to modify or discontinue any aspect of the service at any time without liability.
                                 </p>
                             </div>
                         </section>

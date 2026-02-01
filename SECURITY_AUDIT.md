@@ -1,10 +1,10 @@
 # Security Audit & Posture Report
-**Project:** Chain Receipt (GChain Receipt)
+**Project:** TxProof
 **Date:** January 05, 2026
 **Version:** 1.0
 
 ## 1. Executive Summary
-This document outlines the security architecture, potential risks, and implemented mitigations for the Chain Receipt ecosystem. The system is designed with a "Trust but Verify" approach, particularly in its interaction with blockchain data and user inputs.
+This document outlines the security architecture, potential risks, and implemented mitigations for the TxProof ecosystem. The system is designed with a "Trust but Verify" approach, particularl in its interaction with blockchain data and user inputs.
 
 ## 2. Infrastructure Security
 

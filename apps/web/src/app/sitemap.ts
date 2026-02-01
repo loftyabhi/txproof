@@ -1,6 +1,6 @@
 import { MetadataRoute } from 'next';
 
-const BASE_URL = 'https://chainreceipt.vercel.app';
+const BASE_URL = 'https://txproof.xyz';
 
 export default function sitemap(): MetadataRoute.Sitemap {
     const routes = [

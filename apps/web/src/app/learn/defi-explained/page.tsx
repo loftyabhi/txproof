@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     title: 'DeFi Explained | The Future of Finance',
     description: 'Expert guide to Decentralized Finance. Understand the shift from centralized intermediaries to permissionless code, liquidity pools, and programmable money.',
     openGraph: {
-        title: 'DeFi Explained | Chain Receipt Learning',
+        title: 'DeFi Explained | TxProof Learning',
         description: 'Financial infrastructure running on common software. A technical deep dive.',
         type: 'article',
     },
@@ -21,7 +21,7 @@ export default function DeFiExplained() {
         description: 'A technical overview of the paradigm shift from centralized finance to permissionless, programmable protocols.',
         author: {
             '@type': 'Organization',
-            name: 'Chain Receipt',
+            name: 'TxProof',
         },
         educationalLevel: 'Advanced',
     };

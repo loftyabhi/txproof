@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-    title: 'Page Not Found | Chain Receipt',
+    title: 'Page Not Found | TxProof',
     description: 'This page does not exist. Blockchain data remains unchanged.',
     robots: {
         index: false,

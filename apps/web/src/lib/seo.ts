@@ -1,8 +1,8 @@
 import { Metadata } from 'next';
 
-export const BRAND = "Chain Receipt";
+export const BRAND = "TxProof";
 export const TAGLINE = "Professional Blockchain Intelligence";
-export const DOMAIN = "https://chainreceipt.vercel.app";
+export const DOMAIN = "https://txproof.xyz";
 
 // --- Canonical URL Construction ---
 
