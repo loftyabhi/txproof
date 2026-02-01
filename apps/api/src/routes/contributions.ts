@@ -2,9 +2,13 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { ContributionService } from '../services/ContributionService';
 import { supabase } from '../lib/supabase';
+import { publicRateLimiter } from '../middleware/publicRateLimiter';
 
 const router = Router();
 const contributionService = new ContributionService();
+
+// Apply rate limiting to all contribution routes
+router.use(publicRateLimiter);
 
 const submitSchema = z.object({
     txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/, "Invalid Transaction Hash format").transform(val => val.toLowerCase()),

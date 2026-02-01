@@ -47,6 +47,12 @@ export function BillGenerator() {
 
             const data = await response.json();
 
+            // Handle rate limiting (429)
+            if (response.status === 429) {
+                const retryAfter = data.retryAfterMs ? Math.ceil(data.retryAfterMs / 1000) : 30;
+                throw new Error(`Rate limit exceeded. Please wait ${retryAfter} seconds before trying again.`);
+            }
+
             if (!response.ok) {
                 throw new Error(data.error || 'Failed to start generation');
             }
@@ -59,6 +65,13 @@ export function BillGenerator() {
                 try {
                     const jobRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/bills/job/${jobId}`);
                     const jobData = await jobRes.json();
+
+                    // Handle rate limiting during polling (429) - show warning but continue
+                    if (jobRes.status === 429) {
+                        const retryAfter = jobData.retryAfterMs ? Math.ceil(jobData.retryAfterMs / 1000) : 5;
+                        toast.loading(`Rate limited, retrying in ${retryAfter}s...`, { id: toastId });
+                        return; // Skip this poll cycle, will retry on next interval
+                    }
 
                     if (!jobRes.ok) {
                         // If job not found or server error, stop polling

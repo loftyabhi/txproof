@@ -8,6 +8,10 @@ import { AdminService } from './services/AdminService';
 import { BillService } from './services/BillService';
 import { SoftQueueService } from './services/SoftQueueService';
 
+// Security Middleware
+import { hybridAuth } from './middleware/hybridAuth';
+import { publicRateLimiter } from './middleware/publicRateLimiter';
+
 dotenv.config();
 
 const app = express();
@@ -37,8 +41,8 @@ app.use('/api/v1/pdfs', pdfsRouter);
 // Note: Admin router mounted below after verifyAdmin definition
 
 
-// Serve generated PDFs via Supabase Redirect
-app.get('/bills/:fileName', async (req: Request, res: Response) => {
+// Serve generated PDFs via Supabase Redirect - Rate Limited (can trigger regeneration)
+app.get('/bills/:fileName', publicRateLimiter, async (req: Request, res: Response) => {
     const { fileName } = req.params;
     try {
         // 1. Check if file exists in Storage
@@ -73,8 +77,8 @@ app.get('/bills/:fileName', async (req: Request, res: Response) => {
     }
 });
 
-// New Endpoint: Get Bill JSON Data (For Client-Side Rendering)
-app.get('/api/v1/bills/:billId/data', async (req: Request, res: Response) => {
+// New Endpoint: Get Bill JSON Data (For Client-Side Rendering) - Rate Limited
+app.get('/api/v1/bills/:billId/data', publicRateLimiter, async (req: Request, res: Response) => {
     const { billId } = req.params;
     const jsonKey = billId.endsWith('.json') ? billId : `${billId}.json`;
     const cleanId = billId.replace('.json', '');
@@ -175,8 +179,8 @@ app.get('/health', (req: Request, res: Response) => {
     res.json({ status: 'ok', timestamp: Date.now() });
 });
 
-// 2. Resolve Bill (Soft Queue)
-app.post('/api/v1/bills/resolve', async (req: Request, res: Response, next: NextFunction) => {
+// 2. Resolve Bill (Soft Queue) - SECURED with Hybrid Auth
+app.post('/api/v1/bills/resolve', hybridAuth, async (req: Request, res: Response, next: NextFunction) => {
     try {
         // Validation
         const validation = billGenerateSchema.safeParse(req.body);
@@ -208,8 +212,8 @@ app.post('/api/v1/bills/resolve', async (req: Request, res: Response, next: Next
     }
 });
 
-// 2.1 Check Job Status (Soft Queue)
-app.get('/api/v1/bills/job/:id', async (req: Request, res: Response, next: NextFunction) => {
+// 2.1 Check Job Status (Soft Queue) - SECURED with Hybrid Auth
+app.get('/api/v1/bills/job/:id', hybridAuth, async (req: Request, res: Response, next: NextFunction) => {
     try {
         const status = await softQueueService.getJobStatus(req.params.id);
 
@@ -278,8 +282,8 @@ app.use('/api/v1/admin', verifyAdmin, adminRouter);
 
 
 // Ads
-// Public Random Ad
-app.get('/api/v1/ads/random', async (req: Request, res: Response, next: NextFunction) => {
+// Public Random Ad - Rate Limited
+app.get('/api/v1/ads/random', publicRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
     try {
         const placement = (req.query.placement as 'web' | 'pdf') || 'web';
         // Prevent caching to ensure random distribution (Equal Proportion)
