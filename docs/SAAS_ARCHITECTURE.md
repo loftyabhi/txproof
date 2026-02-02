@@ -14,15 +14,16 @@ This document details the Enterprise SaaS API layer implemented for TxProof.
     *   `scripts/setup_saas_db.sql`: Base SaaS tables.
     *   `scripts/update_hardening.sql`: Enterprise Audit, Security & Metrics views.
 
-### Authentication & Security (`saasAuth.ts`, `hybridAuth.ts`, `publicRateLimiter.ts`)
-*   **Multi-Layer Governance**:
-    1.  **Validation**: Checks Active status and `abuse_flag`.
-    2.  **Network**: Enforces `ip_allowlist` if configured.
-    2.  **Network**: Enforces `ip_allowlist` if configured.
-    3.  **Realtime (RPS)**: In-memory/Redis Token Bucket prevents CPU spikes.
-*   **Hybrid Protection**:
+### Authentication & Security (`saasAuth.ts`, `publicRateLimiter.ts`)
+*   **Strict Authorization Integration**:
+    *   **validation**: Checks Active status and `abuse_flag`. Banned keys receive `403 Forbidden` (`INVALID_API_KEY`) and never downgrade to public access.
+    *   **Network**: Enforces `ip_allowlist` if configured.
+    *   **Realtime (RPS)**: In-memory/Redis Token Bucket prevents CPU spikes.
+*   **Structured Errors**:
+    *   Returns JSON with `code` field (e.g. `SECURITY_VIOLATION`, `RATE_LIMIT_EXCEEDED`).
+*   **Hybrid Logic**:
     *   **Authenticated**: Full governance via `saasMiddleware`.
-    *   **Public**: IP-based strict rate limiting via `publicRateLimiter` (Standard: 30 RPM, Strict: 10 RPM).
+    *   **Public**: IP-based strict rate limiting via `publicRateLimiter` (Restricted to lightweight reads).
 *   **Hashed Storage**: Raw keys are never stored. Only SHA-256 hashes.
 
 ### Enhanced Queue (`SoftQueueService.ts`)
@@ -39,8 +40,8 @@ This document details the Enterprise SaaS API layer implemented for TxProof.
 ## 2. API Endpoints
 
 ### Public API (`v1/pdfs.ts`)
-*   **`POST /api/v1/pdfs`**: Enqueue Job. Returns `202 Accepted` immediately. (Requires Key)
-*   **`POST /api/v1/bills/resolve`**: Hybrid Endpoint. Public use is Rate Limited. Authenticated use consumes Quota.
+*   **`POST /api/v1/pdfs`**: Enqueue Job. Returns `202 Accepted`. (Strict SaaS Auth)
+*   **`POST /api/v1/bills/resolve`**: Enqueue Bill Generation. **Strict SaaS Auth Only**. (Public access removed for safety).
 *   **`GET /api/v1/pdfs/:jobId`**: Poll Status. Returns State + Data.
 *   **`GET /api/v1/pdfs/by-tx/:txHash`**: Lookup by Transaction Hash.
 

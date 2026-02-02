@@ -93,6 +93,34 @@ export class SoftQueueService {
 
             console.log(`[SoftQueue] Processing Job ${job.id} (${job.tx_hash}) Priority: ${job.priority || 0}...`);
 
+            // [HARDENING] Re-Verify API Key Status (Prevent processing if banned after enqueue)
+            if (job.api_key_id) {
+                const { data: keyData } = await supabase
+                    .from('api_keys')
+                    .select('is_active, abuse_flag')
+                    .eq('id', job.api_key_id)
+                    .single();
+
+                if (keyData) {
+                    if (!keyData.is_active || keyData.abuse_flag) {
+                        console.warn(`[Security] Worker blocked job ${job.id} (Key Banned/Inactive)`);
+
+                        await supabase
+                            .from('bill_jobs')
+                            .update({
+                                status: 'failed',
+                                error: JSON.stringify({ code: 'SECURITY_VIOLATION', message: 'API Key banned or inactive during processing' }),
+                                updated_at: new Date().toISOString(),
+                                finished_at: new Date().toISOString()
+                            })
+                            .eq('id', job.id);
+
+                        this.processingSlots--;
+                        return; // SKUIP PROCESSING
+                    }
+                }
+            }
+
             const startTime = Date.now();
 
             const heartbeat = setInterval(async () => {

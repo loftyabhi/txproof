@@ -93,6 +93,7 @@ export const publicRateLimiter = (req: Request, res: Response, next: NextFunctio
         console.warn(`[RateLimit] IP ${clientIp} exceeded limit on ${req.method} ${req.path}`);
 
         return res.status(429).json({
+            code: 'RATE_LIMIT_EXCEEDED',
             error: 'Too Many Requests',
             message: `Rate limit exceeded. Retry in ${retryAfterSec} seconds.`,
             retryAfterMs
@@ -139,6 +140,7 @@ export const strictRateLimiter = (req: Request, res: Response, next: NextFunctio
     console.warn(`[StrictRateLimit] IP ${clientIp} blocked on ${req.method} ${req.path} (violations: ${bucket.violations})`);
 
     return res.status(429).json({
+        code: 'RATE_LIMIT_EXCEEDED',
         error: 'Too Many Requests',
         message: 'Rate limit exceeded for this resource-intensive operation.',
         retryAfterMs

@@ -17,8 +17,8 @@ The Bill Generation system has been migrated from a server-side Puppeteer archit
 
 ### Backend (Node.js/Express)
 *   **Endpoints**:
-    1.  `POST /api/v1/bills/resolve` (Primary Trigger - Rate Limited)
-    2.  `GET /api/v1/bills/:billId/data` (Self-Healing - Rate Limited)
+    1.  `POST /api/v1/bills/resolve` (Primary Trigger - **Strict SaaS Auth**)
+    2.  `GET /api/v1/bills/:billId/data` (Public: Read-Only / Auth: Full Regen)
 *   **Duties**:
     1.  Checks Supabase Storage for existing Bill JSON.
     2.  If missing, triggers **Soft Queue** Job (Idempotent).

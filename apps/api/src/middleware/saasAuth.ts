@@ -41,7 +41,7 @@ export const saasMiddleware = async (req: Request, res: Response, next: NextFunc
 
     // 1. Authentication
     if (!apiKey || !apiKey.startsWith('sk_')) {
-        return res.status(401).json({ error: 'Missing or invalid API Key' });
+        return res.status(401).json({ code: 'MISSING_API_KEY', error: 'Missing or invalid API Key' });
     }
 
     try {
@@ -50,7 +50,7 @@ export const saasMiddleware = async (req: Request, res: Response, next: NextFunc
         // 1.1 Hard Abuse/Invalid Check
         if (!details) {
             console.warn(`[Security] Invalid key attempt from ${req.ip}`);
-            return res.status(403).json({ error: 'Invalid, inactive, or flagged API Key' });
+            return res.status(403).json({ code: 'INVALID_API_KEY', error: 'Invalid, inactive, or flagged API Key' });
         }
 
         // 1.2 IP Whitelist Enformcement
@@ -58,19 +58,19 @@ export const saasMiddleware = async (req: Request, res: Response, next: NextFunc
             const clientIp = req.ip || '0.0.0.0';
             if (!details.ipAllowlist.includes(clientIp)) {
                 console.warn(`[Security] Key ${details.id} blocked: IP ${clientIp} not allowed`);
-                return res.status(403).json({ error: 'IP Address not allowed' });
+                return res.status(403).json({ code: 'IP_NOT_ALLOWED', error: 'IP Address not allowed' });
             }
         }
 
         // 2. Realtime Rate Limit (RPS)
         if (!checkRealtimeLimit(details.id, details.plan.rate_limit_rps)) {
-            return res.status(429).json({ error: 'Too Many Requests (Rate Limit)' });
+            return res.status(429).json({ code: 'RATE_LIMIT_EXCEEDED', error: 'Too Many Requests (Rate Limit)' });
         }
 
         // 3. Quota Limit (Monthly)
         const allowed = await apiKeyService.checkAndIncrementUsage(details.id);
         if (!allowed) {
-            return res.status(402).json({ error: 'Monthly Quota Exceeded' });
+            return res.status(402).json({ code: 'QUOTA_EXCEEDED', error: 'Monthly Quota Exceeded' });
         }
 
         // Attach context
@@ -96,6 +96,6 @@ export const saasMiddleware = async (req: Request, res: Response, next: NextFunc
 
     } catch (error) {
         console.error('Middleware Error:', error);
-        res.status(500).json({ error: 'Internal Auth Error' });
+        res.status(500).json({ code: 'INTERNAL_AUTH_ERROR', error: 'Internal Auth Error' });
     }
 };
