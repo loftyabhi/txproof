@@ -9,8 +9,9 @@ import { BillService } from './services/BillService';
 import { SoftQueueService } from './services/SoftQueueService';
 
 // Security Middleware
-import { hybridAuth } from './middleware/hybridAuth';
+import { hybridAuth, hybridAuthWithTracking } from './middleware/hybridAuth';
 import { publicRateLimiter } from './middleware/publicRateLimiter';
+import { saasMiddleware } from './middleware/saasAuth';
 
 dotenv.config();
 
@@ -261,8 +262,6 @@ const setupPrivateRoutes = (app: express.Application) => {
 
 // --- Apply Groups ---
 setupPublicRoutes(app);
-import { saasMiddleware } from './middleware/saasAuth';
-import { hybridAuthWithTracking } from './middleware/hybridAuth';
 setupPrivateRoutes(app);
 
 // 3. Admin Login
