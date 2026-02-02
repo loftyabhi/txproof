@@ -28,16 +28,15 @@ export function AdminLogin({ onLogin }: AdminLoginProps) {
             // 2. Sign Message
             const signature = await signMessageAsync({ message: nonce });
 
-            // 3. Verify on Backend
+            // 3. Verify on Backend (Sets httpOnly cookie)
             const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/login`, {
                 address,
                 signature,
                 nonce
-            });
+            }, { withCredentials: true });
 
-            // 4. Save Token
-            localStorage.setItem('admin_token', res.data.token);
-            onLogin(res.data.token);
+            // 4. Notify Parent (No local storage needed)
+            onLogin(res.data.token); // Keep passing token for state, but cookie handles auth
 
         } catch (err: any) {
             console.error(err);

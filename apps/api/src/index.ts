@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { z } from 'zod';
+import cookieParser from 'cookie-parser';
 import { AuthService } from './services/AuthService';
 import { AdminService } from './services/AdminService';
 import { BillService } from './services/BillService';
@@ -64,6 +65,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     next();
 });
 app.use(express.json());
+app.use(cookieParser());
 
 import { supabase } from './lib/supabase';
 import contributionsRouter from './routes/contributions';
@@ -269,6 +271,15 @@ app.post('/api/v1/auth/login', async (req: Request, res: Response, next: NextFun
     try {
         const { address, signature, nonce } = req.body;
         const result = await authService.loginAdmin(address, signature, nonce);
+
+        // Set HttpOnly Cookie
+        res.cookie('admin_token', result.token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production', // true in prod
+            sameSite: 'lax', // or 'strict' if on same domain
+            maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        });
+
         res.json(result);
     } catch (error) {
         next(error);
@@ -279,16 +290,26 @@ app.post('/api/v1/auth/login', async (req: Request, res: Response, next: NextFun
 
 // Middleware to verify Admin JWT
 const verifyAdmin = (req: Request, res: Response, next: NextFunction) => {
+    // 1. Try Cookie first (Secure)
+    let token = req.cookies?.admin_token;
+
+    // 2. Fallback to Header (Dev/Curl)
     const authHeader = req.headers.authorization;
-    if (!authHeader) {
+    if (!token && authHeader) {
+        token = authHeader.split(' ')[1];
+    }
+
+    if (!token) {
         res.status(401).json({ error: 'No token provided' });
         return;
     }
 
-    const token = authHeader.split(' ')[1];
-
     try {
-        authService.verifyToken(token);
+        const payload = authService.verifyToken(token);
+        // Explicit Role Check
+        if (payload.role !== 'admin') {
+            throw new Error('Not an admin');
+        }
         next();
     } catch (error) {
         res.status(403).json({ error: 'Invalid or expired token' });

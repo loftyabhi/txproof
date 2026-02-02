@@ -67,14 +67,17 @@ export default function DashboardPage() {
 
     useEffect(() => {
         setHasHydrated(true);
-        const storedToken = localStorage.getItem('admin_token');
-        if (storedToken) setToken(storedToken);
+        setHasHydrated(true);
+        // const storedToken = localStorage.getItem('admin_token'); // Removed manual storage
+        // if (storedToken) setToken(storedToken);
+        // Instead, we just assume if address matches admin, we try to fetch.
+        // If fetch fails with 401, we show login.
 
         if (address && ADMIN_ADDRESS && address.toLowerCase() === ADMIN_ADDRESS.toLowerCase()) {
             setIsAdmin(true);
+            setToken('cookie-session'); // Dummy value to trigger render, actual auth is via cookie
         } else {
             setIsAdmin(false);
-            // Default to 'api' (Developer Portal) if not admin
             setActiveTab('api');
         }
     }, [address]);
@@ -104,7 +107,7 @@ export default function DashboardPage() {
         setIsLoadingData(true);
         try {
             const endpoint = `/api/admin/keys`;
-            const res = await axios.get(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+            const res = await axios.get(endpoint, { withCredentials: true });
             setApiKeys(res.data);
         } catch (err) { handleError(err); }
         finally { setIsLoadingData(false); }
@@ -114,7 +117,7 @@ export default function DashboardPage() {
         setIsLoadingData(true);
         try {
             const endpoint = `/api/admin/audit`;
-            const res = await axios.get(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+            const res = await axios.get(endpoint, { withCredentials: true });
             setAuditLogs(res.data);
         } catch (err) { handleError(err); }
         finally { setIsLoadingData(false); }
@@ -124,7 +127,7 @@ export default function DashboardPage() {
         setIsLoadingData(true);
         try {
             const endpoint = `/api/admin/usage`;
-            const res = await axios.get(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+            const res = await axios.get(endpoint, { withCredentials: true });
             setApiStats(res.data);
         } catch (err) { handleError(err); }
         finally { setIsLoadingData(false); }
@@ -161,7 +164,7 @@ export default function DashboardPage() {
         setIsLoadingData(true);
         try {
             const endpoint = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/ads`;
-            const res = await axios.get(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+            const res = await axios.get(endpoint, { withCredentials: true });
             setAds(res.data);
         } catch (err) { handleError(err); }
         finally { setIsLoadingData(false); }
@@ -207,7 +210,7 @@ export default function DashboardPage() {
         console.error(err);
         if (err.response?.status === 401) {
             setToken(null);
-            localStorage.removeItem('admin_token');
+            // localStorage.removeItem('admin_token'); // Gone
             toast.error("Session expired");
         } else {
             toast.error("Operation failed");
