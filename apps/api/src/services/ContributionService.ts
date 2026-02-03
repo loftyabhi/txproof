@@ -88,7 +88,7 @@ export class ContributionService {
             const receipt = await this.provider.getTransactionReceipt(txHash);
 
             if (!receipt) {
-                // Not mined yet? Or invalid?
+                console.log(`[ContributionService] Receipt NOT FOUND for ${txHash} on chain ${CHAIN_ID}`);
                 return 'pending';
             }
 
@@ -99,6 +99,7 @@ export class ContributionService {
             }
 
             if (receipt.to?.toLowerCase() !== VAULT_ADDRESS.toLowerCase()) {
+                console.warn(`[ContributionService] Mismatch: TxTo ${receipt.to} !== Vault ${VAULT_ADDRESS}`);
                 await this.markFailed(txHash, 'FAILED_WRONG_CONTRACT');
                 return 'failed';
             }
@@ -107,8 +108,10 @@ export class ContributionService {
             const currentBlock = await this.provider.getBlockNumber();
             const confirmations = currentBlock - receipt.blockNumber;
 
+            console.log(`[ContributionService] ${txHash} Confirmations: ${confirmations} (Required: ${CONFIRMATIONS_REQUIRED})`);
+
             if (confirmations < CONFIRMATIONS_REQUIRED) {
-                console.log(`[ContributionService] ${txHash} has ${confirmations}/${CONFIRMATIONS_REQUIRED} confirmations. Waiting.`);
+                console.log(`[ContributionService] Waiting for confirmations...`);
                 return 'pending'; // Stay pending, retry worker will pick it up
             }
 
@@ -172,6 +175,84 @@ export class ContributionService {
             console.error(`[ContributionService] Crash processing ${txHash}:`, error);
             return 'error';
         }
+    }
+
+    /**
+     * Admin Manual Sync: Trigger processing for a transaction.
+     * Guaranteed to verify on-chain data before ingesting.
+     */
+    public async manualSync(txHash: string): Promise<{ status: string; message: string }> {
+        const hash = txHash.toLowerCase();
+
+        // 1. Ensure record exists in pending (otherwise updates will fail silently)
+        const { error } = await supabase
+            .from('pending_contributions')
+            .upsert({
+                tx_hash: hash,
+                chain_id: CHAIN_ID,
+                status: 'pending',
+                retries: 0
+            }, { onConflict: 'tx_hash', ignoreDuplicates: true });
+
+        if (error) {
+            console.error(`[ContributionService] Manual Sync Upsert Failed:`, error);
+            throw new Error(`Database Error: ${error.message}`);
+        }
+
+        // 2. Process
+        const result = await this.processPendingContribution(hash);
+        return {
+            status: result,
+            message: result === 'confirmed' ? 'Successfully synced.' : `Sync status: ${result}`
+        };
+    }
+
+    /**
+     * Soft Invalidation: Mark a contribution as invalid without deleting it.
+     */
+    public async invalidateContribution(id: string, reason: string, actorId: string): Promise<void> {
+        // 1. Mark Invalid
+        const { error } = await supabase
+            .from('contributor_events')
+            .update({
+                is_valid: false,
+                invalid_reason: reason,
+                invalidated_at: new Date().toISOString()
+            })
+            .eq('id', id);
+
+        if (error) throw error;
+
+        // 2. Audit Log
+        await supabase.from('audit_logs').insert({
+            actor_id: actorId,
+            action: 'CONTRIBUTION_INVALIDATED',
+            target_id: id,
+            metadata: { reason }
+        });
+    }
+
+    /**
+     * Revalidation: Restore a previously invalidated contribution.
+     */
+    public async revalidateContribution(id: string, reason: string, actorId: string): Promise<void> {
+        const { error } = await supabase
+            .from('contributor_events')
+            .update({
+                is_valid: true,
+                invalid_reason: null,
+                invalidated_at: null
+            })
+            .eq('id', id);
+
+        if (error) throw error;
+
+        await supabase.from('audit_logs').insert({
+            actor_id: actorId,
+            action: 'CONTRIBUTION_REVALIDATED',
+            target_id: id,
+            metadata: { reason }
+        });
     }
 
     private async markFailed(txHash: string, reason: string) {

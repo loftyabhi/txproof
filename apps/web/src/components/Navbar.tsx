@@ -29,7 +29,13 @@ export function Navbar() {
         } else {
             setIsAdmin(false);
         }
-    }, [address]);
+
+        // [AUTO-LOGOUT] If wallet is disconnected but we still have a session, kill it.
+        // This handles cases where user disconnects via MetaMask instead of our button.
+        if (mounted && !isConnected && isAdmin) {
+            handleLogout();
+        }
+    }, [address, isConnected, mounted, isAdmin]);
 
     const handleConnect = () => {
         // Simple priority connection strategy for this hotfix:
@@ -41,6 +47,21 @@ export function Navbar() {
             connect({ connector: preferred });
         } else {
             alert('No suitable wallet connector found');
+        }
+    };
+
+    const handleLogout = async () => {
+        try {
+            // 1. Clear Backend Cookie
+            await fetch('/api/v1/auth/logout', { method: 'POST' });
+        } catch (e) {
+            console.error('Logout failed', e);
+        } finally {
+            // 2. Disconnect Wallet
+            disconnect();
+
+            // 3. Force refresh or redirect to home to clear internal state
+            window.location.href = '/';
         }
     };
 
@@ -115,7 +136,7 @@ export function Navbar() {
                                     <div className="absolute right-0 top-full mt-2 w-48 origin-top-right rounded-xl bg-[#111] border border-white/10 shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
                                         <div className="p-1">
                                             <button
-                                                onClick={() => disconnect()}
+                                                onClick={handleLogout}
                                                 className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-white/5 rounded-lg transition-colors"
                                             >
                                                 Disconnect

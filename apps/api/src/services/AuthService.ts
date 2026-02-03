@@ -1,14 +1,23 @@
 import { ethers } from 'ethers';
 import jwt from 'jsonwebtoken';
+import { randomBytes, createHash } from 'crypto';
 
 interface AuthResponse {
     token: string;
+    csrfToken: string;
     expiresIn: number;
 }
 
 export class AuthService {
-    private readonly jwtSecret = process.env.JWT_SECRET || 'dev-secret-key-change-in-prod';
+    private readonly jwtSecret: string;
     private readonly adminAddress = process.env.ADMIN_ADDRESS?.toLowerCase();
+
+    constructor() {
+        if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+            throw new Error('CRITICAL SECURITY: JWT_SECRET must be set in production environment.');
+        }
+        this.jwtSecret = process.env.JWT_SECRET || 'dev-secret-key-change-in-prod';
+    }
 
     /**
      * Verify a wallet signature and issue a JWT if the signer is an admin.
@@ -34,15 +43,40 @@ export class AuthService {
             throw new Error('Unauthorized: Wallet is not an admin');
         }
 
-        // 4. Issue Token
-        const token = jwt.sign({ role: 'admin', address: recoveredAddress }, this.jwtSecret, {
-            expiresIn: '24h',
+        // 4. Generate CSRF Token and Hash
+        const csrfToken = randomBytes(32).toString('hex');
+        const csrfHash = createHash('sha256').update(csrfToken).digest('hex');
+
+        // 5. Issue Token with CSRF Hash
+        const token = jwt.sign({
+            role: 'admin',
+            address: recoveredAddress,
+            csrfHash // Bind session to this specific CSRF token
+        }, this.jwtSecret, {
+            expiresIn: '30m',
         });
 
         return {
             token,
-            expiresIn: 86400, // 24 hours
+            csrfToken,
+            expiresIn: 1800, // 30 minutes
         };
+    }
+
+    /**
+     * Issue a rotated session (new JWT + new CSRF) for an existing valid user
+     */
+    rotateSession(currentPayload: any): AuthResponse {
+        const csrfToken = randomBytes(32).toString('hex');
+        const csrfHash = createHash('sha256').update(csrfToken).digest('hex');
+
+        const token = jwt.sign({
+            role: 'admin',
+            address: currentPayload.address,
+            csrfHash
+        }, this.jwtSecret, { expiresIn: '30m' });
+
+        return { token, csrfToken, expiresIn: 1800 };
     }
 
     /**

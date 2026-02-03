@@ -1,15 +1,18 @@
 import { supabase } from '../lib/supabase';
 import { BillService } from './BillService';
+import { WebhookService } from './WebhookService'; // [NEW] Import
 
 const MAX_CONCURRENT_JOBS = parseInt(process.env.MAX_CONCURRENT_JOBS || '2', 10);
 const PROCESSING_TIMEOUT_MINS = parseInt(process.env.JOB_PROCESSING_TIMEOUT_MINUTES || '5', 10);
 
 export class SoftQueueService {
     private billService: BillService;
+    private webhookService: WebhookService; // [NEW] Dependency
     private processingSlots = 0;
 
     constructor() {
         this.billService = new BillService();
+        this.webhookService = new WebhookService();
     }
 
     /**
@@ -156,6 +159,18 @@ export class SoftQueueService {
 
                 console.log(`[SoftQueue] Job ${job.id} Completed in ${duration}ms.`);
 
+                // [Webhook] Dispatch Success
+                if (job.api_key_id) {
+                    this.webhookService.dispatch('bill.completed', {
+                        id: job.id,
+                        billId: result.billData.BILL_ID,
+                        txHash: job.tx_hash,
+                        chainId: job.chain_id,
+                        status: 'completed',
+                        durationMs: duration
+                    }, job.api_key_id).catch(err => console.error('[Webhook] Dispatch Error:', err));
+                }
+
             } catch (err: any) {
                 console.error(`[SoftQueue] Job ${job.id} Failed:`, err.message);
                 await supabase
@@ -168,6 +183,17 @@ export class SoftQueueService {
                         duration_ms: Date.now() - startTime
                     })
                     .eq('id', job.id);
+
+                // [Webhook] Dispatch Failure
+                if (job.api_key_id) {
+                    this.webhookService.dispatch('bill.failed', {
+                        id: job.id,
+                        txHash: job.tx_hash,
+                        chainId: job.chain_id,
+                        status: 'failed',
+                        error: err.message
+                    }, job.api_key_id).catch(err => console.error('[Webhook] Dispatch Error:', err));
+                }
             } finally {
                 clearInterval(heartbeat);
                 this.processingSlots--;

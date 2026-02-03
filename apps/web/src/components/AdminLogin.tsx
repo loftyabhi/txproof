@@ -29,7 +29,7 @@ export function AdminLogin({ onLogin }: AdminLoginProps) {
             const signature = await signMessageAsync({ message: nonce });
 
             // 3. Verify on Backend (Sets httpOnly cookie)
-            const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/login`, {
+            const res = await axios.post(`/api/v1/auth/login`, {
                 address,
                 signature,
                 nonce
@@ -132,7 +132,7 @@ export function AdminLogin({ onLogin }: AdminLoginProps) {
                                 This wallet is not authorized to access the admin verification panel.
                             </p>
                             <div className="text-[10px] text-red-200/30 font-mono break-all uppercase tracking-wider">
-                                Required: {ADMIN_ADDRESS || 'ERR_NO_CONFIG'}
+                                Required: ADMIN ACCESS
                             </div>
                         </div>
                     )}

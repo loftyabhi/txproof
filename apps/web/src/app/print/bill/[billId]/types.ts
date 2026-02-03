@@ -121,4 +121,15 @@ export interface BillViewModel {
     adContent: string;
     adUrl?: string;
     adId?: string;
+
+    // Enterprise
+    RECEIPT_HASH?: string;
+    HASH_ALGO?: string;
+    BRANDING?: {
+        logoUrl?: string;
+        primaryColor?: string;
+        accentColor?: string;
+        footerText?: string;
+        font?: string;
+    };
 }

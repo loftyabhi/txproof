@@ -2,12 +2,15 @@
 import fs from 'fs';
 import path from 'path';
 import { PriceOracleService } from './PriceOracleService';
+import { TemplateService } from './TemplateService'; // [NEW]
 import { transactionClassifier, ClassificationResult, ExecutionType, TransactionEnvelopeType } from './TransactionClassifier';
 import { AdminService } from './AdminService';
 import { ERC20_ABI, ERC721_ABI, ERC1155_ABI } from '../abis/Common';
 import QRCode from 'qrcode';
 import { supabase } from '../lib/supabase';
 import { createHash } from 'crypto';
+import { computeReceiptHash } from '../lib/cryptography';
+import { logger, createComponentLogger } from '../lib/logger';
 
 // --- Strict Interfaces ---
 
@@ -15,6 +18,7 @@ export interface BillRequest {
     txHash: string;
     chainId: number;
     connectedWallet?: string;
+    apiKeyId?: string; // [NEW] Context for Template
     forceRegenerate?: boolean; // New flag for Self-Healing
 }
 
@@ -195,6 +199,8 @@ const getChainIcon = (chainId: number): string => {
 export class BillService {
     private oracle: PriceOracleService;
     private adminService: AdminService;
+    private templateService: TemplateService; // [NEW]
+
     private rpcs: { [key: number]: string } = {
         1: 'https://eth.llamarpc.com',
         8453: 'https://mainnet.base.org',
@@ -211,6 +217,7 @@ export class BillService {
     constructor() {
         this.oracle = new PriceOracleService();
         this.adminService = new AdminService();
+        this.templateService = new TemplateService();
     }
 
 
@@ -220,7 +227,7 @@ export class BillService {
      * ID Format: BILL-{chainId}-{blockNumber}-{shortHash}
      */
     async regenerateFromId(billId: string): Promise<string> {
-        console.log(`[BillService] Attempting regeneration for ID: ${billId}`);
+        logger.info('Attempting bill regeneration', { billId });
         const cleanId = billId.replace('.pdf', '').replace('.json', '');
         const parts = cleanId.split('-');
 
@@ -257,7 +264,7 @@ export class BillService {
             throw new Error(`Transaction with prefix ${shortHash} not found in block ${blockNumber}`);
         }
 
-        console.log(`[BillService] Recovered hash ${foundHash} for ${cleanId}`);
+        logger.info('Recovered transaction hash', { fullHash: foundHash, billId: cleanId });
 
         // 3. Trigger Generation (FORCE REGENERATE to bypass DB Cache)
         await this.generateBill({
@@ -277,7 +284,8 @@ export class BillService {
      */
     async generateBill(request: BillRequest): Promise<BillResponse> {
         const { txHash, chainId } = request;
-        console.log(`[BillService] Generating bill for ${txHash} on chain ${chainId}`);
+        const billLogger = createComponentLogger('BillService');
+        billLogger.info('Generating bill', { txHash, chainId });
 
         // 0. Hard Idempotency Check (Enterprise Reliability)
         // Check DB before ANY RPC calls
@@ -290,7 +298,7 @@ export class BillService {
             .single();
 
         if (existingBill && existingBill.bill_json && !request.forceRegenerate) {
-            console.log(`[BillService] Cache Hit (Hard Idempotency): ${txHash}`);
+            billLogger.info('Cache hit (hard idempotency)', { txHash, billId: existingBill.bill_id });
             return {
                 pdfPath: `/print/bill/${existingBill.bill_id}`,
                 billData: existingBill.bill_json as BillViewModel
@@ -315,7 +323,7 @@ export class BillService {
             // CORRECTED: Point to Client-Side Print Route, not static PDF file
             const publicPath = `/print/bill/${billId}`;
 
-            console.log(`[BillService] ID Resolved: ${billId}`);
+            billLogger.info('Bill ID resolved', { billId, txHash, chainId });
 
             // 2. Check Cache (Database First)
             const { data: dbBill, error: dbError } = await supabase
@@ -326,7 +334,7 @@ export class BillService {
                 .single();
 
             if (dbBill && dbBill.bill_json && !request.forceRegenerate) {
-                console.log(`[BillService] DB Cache Hit! Returning existing bill.`);
+                billLogger.info('DB cache hit', { billId });
 
                 // Sliding Window: Reset deletion timer on access
                 this.touchBill(txHash, chainId).catch(err => console.error("Touch failed", err));
@@ -338,7 +346,7 @@ export class BillService {
             }
 
             if (request.forceRegenerate) {
-                console.log(`[BillService] Force Regenerate is ON: Bypassing Cache.`);
+                billLogger.info('Force regenerate enabled, bypassing cache', { billId });
             }
 
             // Fallback: Check Storage (Legacy/PDF check)
@@ -348,7 +356,7 @@ export class BillService {
                 .download(jsonKey);
 
             if (existingData) {
-                console.log(`[BillService] Storage Cache Hit! Returning existing bill.`);
+                billLogger.info('Storage cache hit', { billId });
                 const jsonString = await existingData.text();
                 const cachedViewModel = JSON.parse(jsonString);
 
@@ -362,7 +370,7 @@ export class BillService {
             }
 
             // 3. Cache Miss - Resume Generation
-            console.log(`[BillService] Cache Miss. Fetching full data...`);
+            billLogger.info('Cache miss, fetching full transaction data', { billId, txHash });
 
             // Fetch remaining data (Tx, Block, Timestamp) - Receipt is already fetched
             // We can reuse the provider but we need to match the signature of fetchTransactionData or call it fully.
@@ -426,7 +434,7 @@ export class BillService {
             // const pdfBuffer = await this.renderPdfBuffer(billData);
 
             // 5. Upload to Supabase (JSON Only)
-            console.log(`[BillService] Uploading ${billId} JSON to Supabase...`);
+            billLogger.info('Uploading bill JSON to storage', { billId });
 
             // Upload JSON (Metadata for future 0-RPC retrieval)
             const jsonBuffer = Buffer.from(JSON.stringify(billData));
@@ -437,18 +445,62 @@ export class BillService {
                     upsert: true
                 });
 
-            // Save to DB (Cache)
-            await this.saveToDb(txHash, chainId, userAddress, billData, receipt.status === 1);
+            // [CRITICAL] Cryptographic Proof - MUST HAPPEN BEFORE BRANDING
+            // This ensures hash is deterministic and branding doesn't affect proof
+            let receiptHash: string;
+            try {
+                // Compute hash using canonical JSON serialization (RFC 8785)
+                receiptHash = computeReceiptHash(billData);
+                logger.info('[BillService] Receipt hash computed', {
+                    billId,
+                    hash: receiptHash.substring(0, 10) + '...'
+                });
+            } catch (error: any) {
+                logger.error('[BillService] Hash computation failed', {
+                    billId,
+                    error: error.message
+                });
+                throw new Error('Failed to compute receipt hash');
+            }
+
+            // Save to DB FIRST with hash (ensures immutability)
+            await this.saveToDb(txHash, chainId, userAddress, billData, receipt.status === 1, receiptHash);
+
+            // [NEW FEATURE] Apply Branding Template AFTER hashing
+            // Branding is presentation-only and doesn't affect cryptographic proof
+            if (request.apiKeyId) {
+                try {
+                    const template = await this.templateService.getTemplate(request.apiKeyId);
+                    if (template) {
+                        (billData as any).BRANDING = {
+                            logoUrl: template.logo_url,
+                            primaryColor: template.primary_color,
+                            accentColor: template.accent_color,
+                            footerText: template.footer_text,
+                            font: template.font_variant
+                        };
+                    }
+                } catch (e: any) {
+                    logger.warn('[BillService] Failed to apply branding', {
+                        billId,
+                        error: e.message
+                    });
+                }
+            }
+
+            // Attach hash metadata AFTER hashing (for client verification)
+            (billData as any).RECEIPT_HASH = receiptHash;
+            (billData as any).HASH_ALGO = 'keccak256';
 
             // Trigger Cleanup (Async/Fire-and-forget)
-            this.cleanupOldBills().catch(err => console.error("Cleanup failed", err));
+            this.cleanupOldBills().catch(err => logger.error('Bill cleanup failed', { error: err.message }));
 
-            console.log(`[BillService] JSON Data generated and cached.`);
+            billLogger.info('Bill generated and cached', { billId, txHash });
             // Return Frontend URL path instead of PDF path
             return { pdfPath: `/print/bill/${billId}`, billData };
 
         } catch (error: any) {
-            console.error(`[BillService] Generation Failed: ${error.message}`);
+            billLogger.error('Bill generation failed', { txHash, chainId, error: error.message });
             throw error;
         }
     }
@@ -993,7 +1045,7 @@ export class BillService {
         if (t === 3) return 'EIP-4844';
         return 'Legacy';
     }
-    private async saveToDb(txHash: string, chainId: number, wallet: string, data: BillViewModel, isConfirmed: boolean) {
+    private async saveToDb(txHash: string, chainId: number, wallet: string, data: BillViewModel, isConfirmed: boolean, receiptHash?: string) {
         // [IMPROVEMENT] Auto-create user if missing to avoid FK error
         // minimizing logs and ensuring data consistency.
         if (wallet) {
@@ -1027,12 +1079,13 @@ export class BillService {
         }
     }
 
-    private async performUpsert(txHash: string, chainId: number, wallet: string | null, data: BillViewModel, isConfirmed: boolean) {
+    private async performUpsert(txHash: string, chainId: number, wallet: string | null, data: BillViewModel, isConfirmed: boolean, receiptHash?: string) {
         const payload: any = {
             tx_hash: txHash,
             chain_id: chainId,
             bill_json: data,
             status: isConfirmed ? 'COMPLETED' : 'PENDING',
+            receipt_hash: receiptHash || null, // [NEW]
             updated_at: new Date().toISOString()
         };
 

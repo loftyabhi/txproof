@@ -2,17 +2,15 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { randomBytes, createHash } from 'crypto';
 
-// Helper to validate admin access (Placeholder - needs real JWT check if available)
-function isAuthorized(request: Request) {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) return false;
-    // In a real app, verify the JWT token here using your secret
-    // For now, we check presence to adhere to the existing flow's contract
-    return authHeader.startsWith('Bearer ');
-}
+import { verifyAdmin } from '@/lib/admin-auth';
+
+// Remove mocked isAuthorized
+// function isAuthorized(request: Request) { ... }
 
 export async function GET(request: Request) {
-    if (!isAuthorized(request)) {
+    try {
+        await verifyAdmin();
+    } catch (e) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -34,7 +32,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-    if (!isAuthorized(request)) {
+    try {
+        await verifyAdmin();
+    } catch (e) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -87,7 +87,9 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
-    if (!isAuthorized(request)) {
+    try {
+        await verifyAdmin();
+    } catch (e) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

@@ -53,16 +53,9 @@ create table if not exists api_usage_aggregates (
 );
 
 -- 4. USAGE LOGS (Granular Observability)
-create table if not exists api_usage (
-  id uuid default gen_random_uuid() primary key,
-  api_key_id uuid references api_keys(id),
-  endpoint text,
-  status_code int,
-  duration_ms int,
-  ip_address text,
-  user_agent text,
-  created_at timestamptz default now()
-);
+-- NOTE: The api_usage table is now defined and managed in 000_complete_schema.sql (Production Schema v2.0)
+-- This section is kept for historical structure but the table creation is handled by the master schema.
+-- -----------------------------------------------------------------------------
 
 -- 5. AUDIT LOGS (Immutable Security Ledger)
 create table if not exists audit_logs (

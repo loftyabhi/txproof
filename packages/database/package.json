@@ -4,7 +4,9 @@
     "private": true,
     "main": "index.ts",
     "scripts": {
-        "migrate": "echo 'Run supabase migrate'"
+        "migrate": "echo 'Run supabase migrate'",
+        "schema:diff": "ts-node scripts/schema-diff.ts",
+        "test:schema": "ts-node tests/schema_smoke.test.ts"
     },
     "dependencies": {
         "postgres": "^3.4.7"

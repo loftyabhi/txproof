@@ -32,25 +32,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
 });
 
 
-import { AuthService } from '../services/AuthService';
-
-const authService = new AuthService();
-
-// Middleware for Admin Check (Local to this route for now)
-const verifyAdmin = (req: Request, res: Response, next: NextFunction) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-        res.status(401).json({ error: 'No token provided' });
-        return;
-    }
-    const token = authHeader.split(' ')[1];
-    try {
-        authService.verifyToken(token);
-        next();
-    } catch (error) {
-        res.status(403).json({ error: 'Invalid or expired token' });
-    }
-};
+import { verifyAdmin } from '../middleware/adminAuth';
 
 // POST /api/v1/tokens (Admin Only)
 router.post('/', verifyAdmin, async (req: Request, res: Response, next: NextFunction) => {

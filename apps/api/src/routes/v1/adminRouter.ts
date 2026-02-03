@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../../lib/supabase';
+import { AuthService } from '../../services/AuthService';
 import { ApiKeyService } from '../../services/ApiKeyService';
 import { AuditService } from '../../services/AuditService';
 import { z } from 'zod';
@@ -8,14 +9,42 @@ const router = Router();
 const keyService = new ApiKeyService();
 const auditService = new AuditService();
 
-// Middleware placeholder - Ensure this is protected in index.ts or here
-// router.use(verifyAdmin); 
+// Note: verifyAdmin middleware is applied in index.ts for the /api/v1/admin base path
 
 // Schema
 const createKeySchema = z.object({
     ownerId: z.string(),
     planName: z.enum(['Free', 'Pro', 'Enterprise']),
     ipAllowlist: z.array(z.string()).optional()
+});
+
+/**
+ * GET /api/v1/admin/me
+ * Session Introspection
+ */
+router.get('/me', (req: Request, res: Response) => {
+    // If request reached here, it passed verifyAdmin middleware (user is admin)
+    const user = (req as any).user;
+
+    // ROTATE SESSION: New JWT + New CSRF on every check
+    // This ensures if a token is stolen, the CSRF part becomes stale or invalid if refreshed elsewhere
+    const authService = new AuthService();
+    const result = authService.rotateSession(user);
+
+    // Set Hardened Cookie
+    res.cookie('admin_token', result.token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        domain: process.env.NODE_ENV === 'production' ? '.txproof.xyz' : undefined,
+        maxAge: 30 * 60 * 1000 // 30 minutes
+    });
+
+    res.json({
+        authenticated: true,
+        csrfToken: result.csrfToken, // Send new CSRF token to client
+        user: { role: user.role, address: user.address }
+    });
 });
 
 /**
@@ -177,6 +206,113 @@ router.get('/usage', async (req: Request, res: Response) => {
             sla: sla?.[0]
         });
 
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+import { ContributionService } from '../../services/ContributionService';
+
+const contributionService = new ContributionService();
+
+/**
+ * GET /api/v1/admin/contributions
+ * List contribution events or pending transactions
+ */
+router.get('/contributions', async (req: Request, res: Response) => {
+    try {
+        const { status } = req.query;
+
+        // Pending Queue
+        if (status === 'pending') {
+            const { data, error } = await supabase
+                .from('pending_contributions')
+                .select('*')
+                .in('status', ['pending', 'failed'])
+                .order('created_at', { ascending: false })
+                .limit(50);
+            if (error) throw error;
+            return res.json(data);
+        }
+
+        // History (Contributor Events)
+        let query = supabase
+            .from('contributor_events')
+            .select('*')
+            .order('block_timestamp', { ascending: false })
+            .limit(50);
+
+        // Optional filtering by validity
+        if (status === 'valid') {
+            query = query.eq('is_valid', true);
+        } else if (status === 'invalid') {
+            query = query.eq('is_valid', false);
+        }
+
+        const { data, error } = await query;
+
+        if (error) throw error;
+        res.json(data);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/**
+ * POST /api/v1/admin/contributions/sync
+ * Secure Manual Sync (Audit Safe)
+ */
+router.post('/contributions/sync', async (req: Request, res: Response) => {
+    try {
+        const { txHash } = req.body;
+        if (!txHash) return res.status(400).json({ error: 'Missing txHash' });
+
+        const result = await contributionService.manualSync(txHash);
+
+        // Log the sync attempt
+        await auditService.log({
+            actorId: (req as any).user?.address || 'admin',
+            action: 'CONTRIBUTION_SYNC',
+            targetId: txHash,
+            metadata: { result },
+            ip: req.ip
+        });
+
+        res.json(result);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/**
+ * POST /api/v1/admin/contributions/:id/invalidate
+ * Soft Invalidation (Financial Integrity Safe)
+ */
+router.post('/contributions/:id/invalidate', async (req: Request, res: Response) => {
+    try {
+        const { reason } = req.body;
+        if (!reason) return res.status(400).json({ error: 'Reason is required for invalidation' });
+
+        const actorId = (req as any).user?.address || 'admin';
+        await contributionService.invalidateContribution(req.params.id, reason, actorId);
+
+        res.json({ success: true, message: 'Contribution invalidated.' });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/**
+ * POST /api/v1/admin/contributions/:id/revalidate
+ * Restore an invalidated contribution
+ */
+router.post('/contributions/:id/revalidate', async (req: Request, res: Response) => {
+    try {
+        const { reason } = req.body;
+        const actorId = (req as any).user?.address || 'admin';
+        await contributionService.revalidateContribution(req.params.id, reason || 'Manual Revalidation', actorId);
+
+        res.json({ success: true, message: 'Contribution revalidated.' });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

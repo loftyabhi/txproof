@@ -1,35 +1,39 @@
 {
-  "name": "api",
-  "version": "1.0.0",
-  "private": true,
+  "name": "@txproof/api",
+  "version": "2.0.0",
   "scripts": {
-    "dev": "ts-node src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
     "start": "node dist/index.js",
-    "build": "tsc"
+    "test:verification": "tsx src/scripts/test-receipt-verification.ts",
+    "migrate:hashes": "tsx src/scripts/migrate-receipt-hashes.ts --apply",
+    "migrate:hashes:dry-run": "tsx src/scripts/migrate-receipt-hashes.ts"
   },
   "dependencies": {
-    "@repo/contracts": "*",
-    "@supabase/supabase-js": "^2.89.0",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/jsonwebtoken": "^9.0.10",
-    "@types/qrcode": "^1.5.6",
-    "axios": "^1.13.2",
-    "bullmq": "^5.66.4",
-    "cookie-parser": "^1.4.7",
+    "@supabase/supabase-js": "^2.38.4",
+    "axios": "^1.6.2",
+    "canonicalize": "^2.0.0",
+    "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
-    "dotenv": "^16.6.1",
-    "ethers": "^6.16.0",
-    "express": "^5.2.1",
-    "ioredis": "^5.8.2",
-    "jsonwebtoken": "^9.0.3",
-    "qrcode": "^1.5.4",
-    "zod": "^4.3.4",
-    "@types/cookie-parser": "^1.4.10"
+    "dotenv": "^16.3.1",
+    "ethers": "^6.9.0",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "isomorphic-dompurify": "^2.16.0",
+    "jsonwebtoken": "^9.0.2",
+    "qrcode": "^1.5.3",
+    "puppeteer": "^21.6.0",
+    "winston": "^3.11.0",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@types/node": "^25.0.3",
-    "ts-node": "^10.9.1",
-    "typescript": "^5.3.2"
+    "@types/cookie-parser": "^1.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/node": "^20.10.5",
+    "@types/qrcode": "^1.5.5",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
   }
 }

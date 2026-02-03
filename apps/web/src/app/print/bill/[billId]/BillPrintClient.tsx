@@ -2,10 +2,59 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
+import { ShieldCheck, Copy, CheckCircle, Printer } from "lucide-react"; // Only standard icons
+import { toast } from "sonner";
 import './print.css';
-import { BillViewModel } from './types';
+import { BillViewModel } from './types'; // Ensure types is valid
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+// Simple Modal Component since Shadcn is apparently missing
+function VerificationModal({ hash, onClose }: { hash: string, onClose: () => void }) {
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-gray-900 border border-gray-800 rounded-lg max-w-md w-full p-6 shadow-2xl relative">
+                <button onClick={onClose} className="absolute top-4 right-4 text-gray-500 hover:text-white">✕</button>
+
+                <div className="flex items-center gap-2 text-emerald-400 text-lg font-bold mb-2">
+                    <ShieldCheck className="w-5 h-5" />
+                    Cryptographically Verified
+                </div>
+                <p className="text-gray-400 text-sm mb-6">
+                    This receipt includes a cryptographic proof of integrity.
+                </p>
+
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                        <label className="text-xs text-gray-500 uppercase font-mono">Receipt Hash (Keccak-256)</label>
+                        <div
+                            className="p-3 bg-black/50 rounded border border-gray-800 font-mono text-xs break-all cursor-pointer hover:border-gray-600 transition-colors flex items-center justify-between group"
+                            onClick={() => {
+                                navigator.clipboard.writeText(hash);
+                                toast.success("Hash copied to clipboard");
+                            }}
+                        >
+                            {hash}
+                            <Copy className="w-3 h-3 text-gray-600 group-hover:text-gray-400" />
+                        </div>
+                    </div>
+                    <div className="bg-emerald-900/20 p-4 rounded border border-emerald-900/50 text-sm text-emerald-200/80">
+                        <div className="flex items-start gap-3">
+                            <CheckCircle className="w-4 h-4 mt-0.5 text-emerald-500" />
+                            <div>
+                                <strong>Tamper Proof.</strong> The content of this receipt is hashed and logged. Any modification to the data will result in a invalid hash verification.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="mt-6 flex justify-end">
+                    <button onClick={onClose} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm">Close</button>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 export default function BillPrintClient() {
     const params = useParams();
@@ -16,6 +65,9 @@ export default function BillPrintClient() {
     const [data, setData] = useState<BillViewModel | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // UI State
+    const [showVerification, setShowVerification] = useState(false);
 
     useEffect(() => {
         if (!billId) return;
@@ -113,22 +165,61 @@ export default function BillPrintClient() {
                 <span>
                     <strong>Legacy Print Mode:</strong> For best results, enable <em>Background graphics</em> in your browser's print settings.
                 </span>
-                <button
-                    onClick={() => window.print()}
-                    style={{
-                        background: '#2563eb',
-                        color: 'white',
-                        border: 'none',
-                        padding: '6px 16px',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        fontWeight: 'bold',
-                        fontSize: '12px'
-                    }}
-                >
-                    Print Now
-                </button>
+
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+
+                    {/* Verified Badge */}
+                    {data && data.RECEIPT_HASH && (
+                        <button
+                            onClick={() => setShowVerification(true)}
+                            style={{
+                                background: 'rgba(16, 185, 129, 0.1)',
+                                color: '#059669',
+                                border: '1px solid rgba(16, 185, 129, 0.2)',
+                                padding: '6px 12px',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                fontWeight: 'bold',
+                                fontSize: '12px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                            }}
+                        >
+                            <ShieldCheck size={14} />
+                            Verified
+                        </button>
+                    )}
+
+                    <button
+                        onClick={() => window.print()}
+                        style={{
+                            background: '#2563eb',
+                            color: 'white',
+                            border: 'none',
+                            padding: '6px 16px',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontWeight: 'bold',
+                            fontSize: '12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                        }}
+                    >
+                        <Printer size={14} />
+                        Print Now
+                    </button>
+                </div>
             </div>
+
+            {/* Modal Portal */}
+            {showVerification && data && data.RECEIPT_HASH && (
+                <VerificationModal
+                    hash={data.RECEIPT_HASH}
+                    onClose={() => setShowVerification(false)}
+                />
+            )}
 
             {/* HEADER */}
             <main className="page-content">

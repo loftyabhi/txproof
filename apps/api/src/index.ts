@@ -8,11 +8,26 @@ import { AuthService } from './services/AuthService';
 import { AdminService } from './services/AdminService';
 import { BillService } from './services/BillService';
 import { SoftQueueService } from './services/SoftQueueService';
+import { WebhookService } from './services/WebhookService';
+import { ContributionService } from './services/ContributionService';
+import { logger, createComponentLogger } from './lib/logger';
+import { supabase } from './lib/supabase';
 
 // Security Middleware
 import { hybridAuth, hybridAuthWithTracking } from './middleware/hybridAuth';
 import { publicRateLimiter } from './middleware/publicRateLimiter';
 import { saasMiddleware } from './middleware/saasAuth';
+import { usageTrackingMiddleware } from './middleware/UsageTrackingMiddleware';
+
+// Route imports
+import contributionsRouter from './routes/contributions';
+import tokensRouter from './routes/tokens';
+import pdfsRouter from './routes/v1/pdfs';
+import adminRouter from './routes/v1/adminRouter';
+import webhooksRouter from './routes/v1/webhooks'; // [NEW]
+import templatesRouter from './routes/v1/templates'; // [NEW]
+import usageRouter from './routes/v1/usage'; // [NEW]
+import verificationRouter from './routes/v1/verification'; // [NEW]
 
 dotenv.config();
 
@@ -64,20 +79,20 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     }
     next();
 });
-app.use(express.json());
-app.use(cookieParser());
 
-import { supabase } from './lib/supabase';
-import contributionsRouter from './routes/contributions';
-import tokensRouter from './routes/tokens';
-import pdfsRouter from './routes/v1/pdfs';
-import adminRouter from './routes/v1/adminRouter';
+app.use(express.json());
+app.use(cookieParser() as any); // Type fix for Express 4.x compatibility
 
 // Services
 const authService = new AuthService();
 const adminService = new AdminService();
 const billService = new BillService();
 const softQueueService = new SoftQueueService();
+const webhookService = new WebhookService();
+
+// [PRODUCTION] Usage tracking middleware (async, non-blocking)
+// Must be before routes to track all API requests
+app.use(usageTrackingMiddleware);
 
 // Register Routes
 app.use('/api/contributions', contributionsRouter);
@@ -85,6 +100,10 @@ app.use('/api/v1/tokens', tokensRouter);
 
 // SaaS Platform Routes
 app.use('/api/v1/pdfs', pdfsRouter);
+app.use('/api/v1/webhooks', webhooksRouter); // [NEW]
+app.use('/api/v1/templates', templatesRouter); // [NEW]
+app.use('/api/v1/usage', usageRouter); // [NEW]
+app.use('/api/v1/verify', verificationRouter); // [NEW]
 // Note: Admin router mounted below after verifyAdmin definition
 
 
@@ -147,14 +166,14 @@ const setupPublicRoutes = (app: express.Application) => {
 
             // [HARDENING] If Public, STOP HERE. No expensive DB queries or Regen.
             if (hybridReq.isPublicRequest) {
-                console.warn(`[Security] Public fallback denied heavy op for ${jsonKey}`);
+                logger.warn('Public fallback denied for heavy operation', { billId: jsonKey });
                 res.status(404).json({ code: 'NOT_FOUND', error: 'Bill data not found (Login to regenerate)' });
                 return;
             }
 
             // [...] Authenticated Logic (DB Fallback, Regen) continues below...
             // Note: Reuse original logic block but now strictly guarded
-            console.log(`[API] Auth User Storage miss for ${jsonKey}. Starting DB Fallback...`);
+            logger.info('Authenticated user storage miss, starting DB fallback', { billId: jsonKey });
 
             // ... (Insert original DB/Regen logic here via BillService) ...
             // For brevity in replacement, re-implementing the core logic:
@@ -219,12 +238,13 @@ const setupPrivateRoutes = (app: express.Application) => {
             const { txHash, chainId, connectedWallet } = validation.data;
             const apiKeyId = (req as any).auth?.id; // Guaranteed by saasMiddleware
 
-            console.log(`[API] Enqueueing request: ${txHash} (Key: ${apiKeyId})`);
+            logger.info('Enqueueing bill request', { txHash, chainId, apiKeyId });
 
             // Pass apiKeyId to enqueue for robust worker checking
             const job = await softQueueService.enqueue(txHash, chainId, { connectedWallet, apiKeyId });
 
-            setImmediate(() => softQueueService.processNext().catch(e => console.error(e)));
+            setImmediate(() => softQueueService.processNext().catch(e => logger.error('Queue processing error', { error: e.message })));
+
 
             res.json({
                 success: true,
@@ -245,7 +265,7 @@ const setupPrivateRoutes = (app: express.Application) => {
             }
 
             if (status.state === 'pending' || status.state === 'processing') {
-                setImmediate(() => softQueueService.processNext().catch(e => console.error(e)));
+                setImmediate(() => softQueueService.processNext().catch(e => logger.error('Queue processing error', { error: e.message })));
             }
 
             res.set('Retry-After', '2');
@@ -266,55 +286,46 @@ const setupPrivateRoutes = (app: express.Application) => {
 setupPublicRoutes(app);
 setupPrivateRoutes(app);
 
+import { createHash } from 'crypto';
+
+// ... (other imports)
+
 // 3. Admin Login
 app.post('/api/v1/auth/login', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { address, signature, nonce } = req.body;
         const result = await authService.loginAdmin(address, signature, nonce);
 
-        // Set HttpOnly Cookie
+        // Set HttpOnly Cookie (Hardened)
         res.cookie('admin_token', result.token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production', // true in prod
-            sameSite: 'lax', // or 'strict' if on same domain
-            maxAge: 24 * 60 * 60 * 1000 // 24 hours
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            domain: process.env.NODE_ENV === 'production' ? '.txproof.xyz' : undefined,
+            maxAge: 30 * 60 * 1000 // 30 minutes
         });
 
+        // Return CSRF token in body
         res.json(result);
     } catch (error) {
         next(error);
     }
 });
 
+// 4. Admin Logout
+app.post('/api/v1/auth/logout', (req: Request, res: Response) => {
+    res.clearCookie('admin_token', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        domain: process.env.NODE_ENV === 'production' ? '.txproof.xyz' : undefined,
+    });
+    res.json({ success: true, message: 'Logged out successfully' });
+});
+
 // 5. Admin Routes (Protected)
 
-// Middleware to verify Admin JWT
-const verifyAdmin = (req: Request, res: Response, next: NextFunction) => {
-    // 1. Try Cookie first (Secure)
-    let token = req.cookies?.admin_token;
-
-    // 2. Fallback to Header (Dev/Curl)
-    const authHeader = req.headers.authorization;
-    if (!token && authHeader) {
-        token = authHeader.split(' ')[1];
-    }
-
-    if (!token) {
-        res.status(401).json({ error: 'No token provided' });
-        return;
-    }
-
-    try {
-        const payload = authService.verifyToken(token);
-        // Explicit Role Check
-        if (payload.role !== 'admin') {
-            throw new Error('Not an admin');
-        }
-        next();
-    } catch (error) {
-        res.status(403).json({ error: 'Invalid or expired token' });
-    }
-};
+import { verifyAdmin } from './middleware/adminAuth';
 
 // SaaS Admin Dashboard
 app.use('/api/v1/admin', verifyAdmin, adminRouter);
@@ -354,7 +365,12 @@ app.delete('/api/v1/admin/ads/:id', verifyAdmin, async (req: Request, res: Respo
 // --- Centralized Error Handler ---
 
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-    console.error('[API ERROR]', err);
+    logger.error('API error', {
+        error: err.message,
+        stack: err.stack,
+        path: req.path,
+        method: req.method
+    });
 
     // Distinguish between operational errors and programming errors if possible
     // For now, straightforward mapping:
@@ -369,5 +385,21 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 app.listen(port, () => {
-    console.log(`⚡ TxProof API running on port ${port} (SafeQueue Mode)`);
+    logger.info('TxProof API server started', {
+        port,
+        mode: 'SafeQueue',
+        env: process.env.NODE_ENV || 'development'
+    });
+
+    // Start webhook delivery worker
+    webhookService.startDeliveryWorker();
+
+    // Start Contribution Retry Worker (Every 60s)
+    const contributionService = new ContributionService();
+    setInterval(() => {
+        contributionService.retryPendingRecords().catch(err => {
+            logger.error('Contribution Worker Error', { error: err.message });
+        });
+    }, 60 * 1000);
+    logger.info('Contribution worker started');
 });

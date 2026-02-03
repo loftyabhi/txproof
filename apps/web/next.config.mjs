@@ -70,6 +70,15 @@ const nextConfig = {
             },
         ]
     },
+    async rewrites() {
+        return [
+            {
+                // Proxy API requests to backend to ensure cookies are set on the same domain
+                source: '/api/v1/:path*',
+                destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/v1/:path*`,
+            },
+        ];
+    },
 };
 
 export default withBundleAnalyzer(nextConfig);

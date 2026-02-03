@@ -2,6 +2,10 @@
   "name": "chain-receipt-monorepo",
   "private": true,
   "packageManager": "npm@10.9.0",
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=10.9.0"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -10,7 +14,9 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "schema:diff": "npm run --workspace=@repo/database schema:diff",
+    "test:schema": "npm run --workspace=@repo/database test:schema"
   },
   "devDependencies": {
     "turbo": "latest",

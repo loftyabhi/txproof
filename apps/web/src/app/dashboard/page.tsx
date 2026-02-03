@@ -5,7 +5,7 @@ import { useAccount, useReadContract, useWriteContract, useBalance, useReadContr
 import { AdminLogin } from '../../components/AdminLogin';
 import { Navbar } from '@/components/Navbar';
 import axios from 'axios';
-import { Trash2, Plus, Megaphone, Shield, Search, X, Loader2, Lock, Unlock, ArrowDownCircle, Settings, Coins, AlertTriangle, Key, BarChart3, Activity, FileText, Globe, Ban, AlertCircle, Copy, Check } from 'lucide-react';
+import { Trash2, Plus, Megaphone, Shield, Search, X, Loader2, Lock, Unlock, ArrowDownCircle, Settings, Coins, AlertTriangle, Key, BarChart3, Activity, FileText, Globe, Ban, AlertCircle, Copy, Check, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { formatEther, parseEther, erc20Abi, formatUnits } from 'viem';
@@ -33,19 +33,22 @@ export default function DashboardPage() {
     const { isConnected, address } = useAccount();
     const { switchChainAsync } = useSwitchChain();
     const chainId = useChainId();
-    const [token, setToken] = useState<string | null>(null);
+    const [isAdmin, setIsAdmin] = useState(false);
+
+    const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+    const [csrfToken, setCsrfToken] = useState('');
     const [hasHydrated, setHasHydrated] = useState(false);
     const [activeTab, setActiveTab] = useState<'ads' | 'vault' | 'contributions' | 'api'>('ads');
-    // Sub-tab for API Platform
     const [apiTab, setApiTab] = useState<'keys' | 'analytics' | 'sla' | 'audit'>('keys');
-    const [isAdmin, setIsAdmin] = useState(false);
 
     // Data States
     const [ads, setAds] = useState<any[]>([]);
     const [apiKeys, setApiKeys] = useState<any[]>([]);
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
     const [apiStats, setApiStats] = useState<any>(null);
+    const [contributions, setContributions] = useState<any[]>([]);
     const [isLoadingData, setIsLoadingData] = useState(false);
+    const [detailItem, setDetailItem] = useState<{ type: 'audit' | 'contribution' | 'apikey', data: any } | null>(null);
 
     // Form States
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -65,48 +68,101 @@ export default function DashboardPage() {
     const [tokenAddress, setTokenAddress] = useState('');
     const [tokenStatus, setTokenStatus] = useState(true);
 
-    useEffect(() => {
-        setHasHydrated(true);
-        setHasHydrated(true);
-        // const storedToken = localStorage.getItem('admin_token'); // Removed manual storage
-        // if (storedToken) setToken(storedToken);
-        // Instead, we just assume if address matches admin, we try to fetch.
-        // If fetch fails with 401, we show login.
-
-        if (address && ADMIN_ADDRESS && address.toLowerCase() === ADMIN_ADDRESS.toLowerCase()) {
-            setIsAdmin(true);
-            setToken('cookie-session'); // Dummy value to trigger render, actual auth is via cookie
+    // Helper for error handling (hoisted)
+    const handleError = (err: any) => {
+        console.error(err);
+        if (err.response?.status === 401) {
+            // Only show "Session expired" if user was previously authenticated
+            if (isAdmin) {
+                toast.error("Session expired");
+            }
+            setIsAdmin(false);
         } else {
-            setIsAdmin(false);
-            setActiveTab('api');
+            toast.error("Operation failed");
         }
-    }, [address]);
+    };
 
     useEffect(() => {
-        if (!isConnected) {
-            setToken(null);
+        setHasHydrated(true);
+        if (isConnected && address) {
+            checkAuth();
+        } else {
+            // No wallet connected? Not an admin session.
             setIsAdmin(false);
+            setIsLoadingAuth(false);
         }
     }, [isConnected, address]);
 
+    // Initial hydration loading state
+    useEffect(() => {
+        if (hasHydrated && !isConnected) {
+            setIsLoadingAuth(false);
+        }
+    }, [hasHydrated, isConnected]);
+
+    const checkAuth = async () => {
+        try {
+            // Check session via proxy
+            const res = await axios.get('/api/v1/admin/me');
+
+            // SECURITY: The cookie might be valid for SOME admin wallet, 
+            // but we MUST ensure it belongs to the CURRENTLY CONNECTED wallet.
+            const sessionAddress = res.data.user?.address?.toLowerCase();
+            const connectedAddress = address?.toLowerCase();
+
+            if (!isConnected || !connectedAddress || sessionAddress !== connectedAddress) {
+                // Address mismatch or wallet not connected -> Not an active admin session for THIS user
+                setIsAdmin(false);
+                return;
+            }
+
+            if (res.data.csrfToken) {
+                setCsrfToken(res.data.csrfToken);
+            }
+            setIsAdmin(true);
+        } catch (e) {
+            setIsAdmin(false);
+        } finally {
+            setIsLoadingAuth(false);
+        }
+    };
+
+    // Auto-Logout effect: If wallet disconnects while in dashboard, trigger cleanup
+    useEffect(() => {
+        if (hasHydrated && !isLoadingAuth && isAdmin && !isConnected) {
+            handleLogout();
+        }
+    }, [isConnected, isAdmin, hasHydrated, isLoadingAuth]);
+
+    const handleLogout = async () => {
+        try {
+            await axios.post('/api/v1/auth/logout');
+        } catch (e) {
+            console.error('Logout failed', e);
+        } finally {
+            window.location.href = '/';
+        }
+    };
+
     // Data Fetching Routing
     useEffect(() => {
-        if (!isConnected || !token) return;
+        if (!isAdmin) return;
 
         if (activeTab === 'ads') fetchData();
+        if (activeTab === 'contributions') fetchContributions();
         if (activeTab === 'api') {
             if (apiTab === 'keys') fetchApiKeys();
             if (apiTab === 'audit') fetchAuditLogs();
             if (apiTab === 'analytics' || apiTab === 'sla') fetchApiStats();
         }
-    }, [token, isConnected, activeTab, apiTab]);
+    }, [isAdmin, activeTab, apiTab]);
 
     // --- API Platform Fetchers ---
     // --- API Platform Fetchers ---
     const fetchApiKeys = async () => {
         setIsLoadingData(true);
         try {
-            const endpoint = `/api/admin/keys`;
+            const endpoint = `/api/v1/admin/keys`;
             const res = await axios.get(endpoint, { withCredentials: true });
             setApiKeys(res.data);
         } catch (err) { handleError(err); }
@@ -116,7 +172,7 @@ export default function DashboardPage() {
     const fetchAuditLogs = async () => {
         setIsLoadingData(true);
         try {
-            const endpoint = `/api/admin/audit`;
+            const endpoint = `/api/v1/admin/audit`;
             const res = await axios.get(endpoint, { withCredentials: true });
             setAuditLogs(res.data);
         } catch (err) { handleError(err); }
@@ -126,21 +182,96 @@ export default function DashboardPage() {
     const fetchApiStats = async () => {
         setIsLoadingData(true);
         try {
-            const endpoint = `/api/admin/usage`;
+            const endpoint = `/api/v1/admin/usage`;
             const res = await axios.get(endpoint, { withCredentials: true });
             setApiStats(res.data);
         } catch (err) { handleError(err); }
         finally { setIsLoadingData(false); }
     };
 
+    const [syncTxHashInput, setSyncTxHashInput] = useState('');
+
+    const [contribTab, setContribTab] = useState<'history' | 'pending'>('history');
+
+    const fetchContributions = async () => {
+        setIsLoadingData(true);
+        try {
+            const endpoint = contribTab === 'pending'
+                ? '/api/v1/admin/contributions?status=pending'
+                : '/api/v1/admin/contributions';
+
+            const res = await axios.get(endpoint, { withCredentials: true });
+            setContributions(res.data);
+        } catch (err) { handleError(err); }
+        finally { setIsLoadingData(false); }
+    };
+
+    // Refetch when sub-tab changes
+    useEffect(() => {
+        if (activeTab === 'contributions') {
+            fetchContributions();
+        }
+    }, [contribTab]);
+
+    // Invalidation State
+    const [invModalOpen, setInvModalOpen] = useState(false);
+    const [invReason, setInvReason] = useState('');
+    const [invTargetId, setInvTargetId] = useState<string | null>(null);
+
+    const handleSyncContribution = async () => {
+        if (!syncTxHashInput) return;
+
+        const toastId = toast.loading("Syncing transaction...");
+        try {
+            // UPDATED ENDPOINT
+            const res = await axios.post('/api/v1/admin/contributions/sync', { txHash: syncTxHashInput }, { headers: { 'X-CSRF-Token': csrfToken } });
+
+            if (res.data.status === 'confirmed') {
+                toast.success("Transaction Synced!", { id: toastId });
+                setSyncTxHashInput(''); // Clear input on success
+                if (contribTab === 'history') fetchContributions();
+            } else if (res.data.status === 'pending') {
+                toast.info("Transaction Queued (Pending Confirmation)", { id: toastId });
+                setSyncTxHashInput('');
+                setContribTab('pending'); // Switch to pending view
+            } else {
+                toast.error(`Sync Failed: ${res.data.message}`, { id: toastId });
+            }
+        } catch (err) {
+            handleError(err);
+            toast.dismiss(toastId);
+        }
+    };
+
+    const handleInvalidateClick = (id: string) => {
+        setInvTargetId(id);
+        setInvReason('');
+        setInvModalOpen(true);
+    };
+
+    const confirmInvalidate = async () => {
+        if (!invTargetId || !invReason) return;
+        const toastId = toast.loading("Invalidating record...");
+        try {
+            await axios.post(`/api/v1/admin/contributions/${invTargetId}/invalidate`,
+                { reason: invReason },
+                { headers: { 'X-CSRF-Token': csrfToken } }
+            );
+            toast.success("Record invalidated", { id: toastId });
+            setInvModalOpen(false);
+            fetchContributions();
+        } catch (err) {
+            handleError(err);
+            toast.dismiss(toastId);
+        }
+    };
+
+    // ... (Created Key handlers unchanged)
+
     const handleCreateKey = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            const res = await axios.post(
-                `/api/admin/keys`,
-                keyFormData,
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
+            const res = await axios.post('/api/v1/admin/keys', keyFormData, { headers: { 'X-CSRF-Token': csrfToken } });
             setCreatedKey(res.data.key);
             fetchApiKeys();
             toast.success("API Key Generated");
@@ -149,11 +280,7 @@ export default function DashboardPage() {
 
     const handleUpdateKey = async (id: string, updates: any) => {
         try {
-            await axios.put(
-                `/api/admin/keys/${id}`,
-                updates,
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
+            await axios.put(`/api/v1/admin/keys/${id}`, updates, { headers: { 'X-CSRF-Token': csrfToken } });
             toast.success("Key updated");
             fetchApiKeys();
         } catch (err) { handleError(err); }
@@ -163,8 +290,8 @@ export default function DashboardPage() {
     const fetchData = async () => {
         setIsLoadingData(true);
         try {
-            const endpoint = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/ads`;
-            const res = await axios.get(endpoint, { withCredentials: true });
+            const endpoint = `/api/v1/admin/ads`;
+            const res = await axios.get(endpoint);
             setAds(res.data);
         } catch (err) { handleError(err); }
         finally { setIsLoadingData(false); }
@@ -176,9 +303,7 @@ export default function DashboardPage() {
                 label: 'Confirm Delete',
                 onClick: async () => {
                     try {
-                        await axios.delete(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/ads/${id}`, {
-                            headers: { Authorization: `Bearer ${token}` }
-                        });
+                        await axios.delete(`/api/v1/admin/ads/${id}`, { headers: { 'X-CSRF-Token': csrfToken } });
                         toast.success('Ad deleted successfully');
                         fetchData();
                     } catch (err) { handleError(err); }
@@ -193,9 +318,7 @@ export default function DashboardPage() {
         const toastId = toast.loading("Saving changes...");
         try {
             const payload = { ...formData, id: formData.id || Date.now().toString() };
-            await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/ads`, payload, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            await axios.post(`/api/v1/admin/ads`, payload, { headers: { 'X-CSRF-Token': csrfToken } });
             setIsFormOpen(false);
             setFormData({});
             fetchData();
@@ -206,16 +329,7 @@ export default function DashboardPage() {
         }
     };
 
-    const handleError = (err: any) => {
-        console.error(err);
-        if (err.response?.status === 401) {
-            setToken(null);
-            // localStorage.removeItem('admin_token'); // Gone
-            toast.error("Session expired");
-        } else {
-            toast.error("Operation failed");
-        }
-    };
+
 
     // --- Vault Logic ---
     const { data: isPaused } = useReadContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'paused' });
@@ -300,9 +414,7 @@ export default function DashboardPage() {
                     is_native: false,
                     is_active: tokenStatus
                 };
-                await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/tokens`, payload, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
+                await axios.post(`/api/v1/tokens`, payload, { headers: { 'X-CSRF-Token': csrfToken } });
                 toast.success("Database synced successfully", { id: toastId });
             } catch (apiErr) {
                 toast.error("On-chain success, but DB sync failed.", { id: toastId });
@@ -314,12 +426,19 @@ export default function DashboardPage() {
     if (!hasHydrated) return null;
 
     // Login Screen
-    if (!token || !isConnected) {
+    if (!isAdmin) {
+        if (isLoadingAuth) {
+            return (
+                <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center font-sans">
+                    <Loader2 className="animate-spin text-white" size={32} />
+                </div>
+            );
+        }
         return (
             <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center font-sans">
                 <div className="max-w-md w-full mx-4">
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white/5 border border-white/10 p-8 rounded-3xl backdrop-blur-xl">
-                        <AdminLogin onLogin={setToken} />
+                        <AdminLogin onLogin={() => { checkAuth(); }} />
                     </motion.div>
                 </div>
             </div>
@@ -355,6 +474,9 @@ export default function DashboardPage() {
                             </button>
                             <button onClick={() => setActiveTab('vault')} className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'vault' ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/25' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}>
                                 <Shield size={16} /> Vault
+                            </button>
+                            <button onClick={() => setActiveTab('contributions')} className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'contributions' ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/25' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}>
+                                <Globe size={16} /> Contributions
                             </button>
                         </>
                     )}
@@ -510,6 +632,116 @@ export default function DashboardPage() {
                     </>
                 )}
 
+                {/* --- CONTRIBUTIONS TAB --- */}
+                {activeTab === 'contributions' && (
+                    <div className="space-y-6">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                            <div>
+                                <h2 className="text-2xl font-bold text-white mb-4">Manual Management</h2>
+                                <div className="flex items-center gap-1 border-b border-white/10 w-fit">
+                                    <button
+                                        onClick={() => setContribTab('history')}
+                                        className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${contribTab === 'history' ? 'border-violet-500 text-white' : 'border-transparent text-zinc-400 hover:text-white'}`}
+                                    >
+                                        History
+                                    </button>
+                                    <button
+                                        onClick={() => setContribTab('pending')}
+                                        className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${contribTab === 'pending' ? 'border-violet-500 text-white' : 'border-transparent text-zinc-400 hover:text-white'}`}
+                                    >
+                                        Pending
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 bg-white/5 p-1 rounded-xl border border-white/10">
+                                <input
+                                    type="text"
+                                    placeholder="Paste Tx Hash (0x...)"
+                                    value={syncTxHashInput}
+                                    onChange={(e) => setSyncTxHashInput(e.target.value)}
+                                    className="bg-transparent text-sm text-white px-3 py-2 outline-none w-64 placeholder:text-zinc-600 font-mono"
+                                />
+                                <button
+                                    onClick={handleSyncContribution}
+                                    disabled={!syncTxHashInput}
+                                    className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:hover:bg-violet-600 text-white px-4 py-2 rounded-lg font-bold transition-all text-xs uppercase tracking-wide"
+                                >
+                                    <ArrowDownCircle size={14} /> Sync
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-md">
+                            <table className="w-full text-left">
+                                <thead className="bg-zinc-900/50 text-zinc-500 text-[10px] uppercase font-bold tracking-widest">
+                                    <tr>
+                                        <th className="p-5">Time/Added</th>
+                                        <th className="p-5">Tx Hash</th>
+                                        {contribTab === 'history' && <th className="p-5">Donor</th>}
+                                        {contribTab === 'history' && <th className="p-5">Amount</th>}
+                                        <th className="p-5">Status</th>
+                                        <th className="p-5 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5 text-sm">
+                                    {isLoadingData ? (
+                                        <tr><td colSpan={6} className="p-10 text-center"><Loader2 className="animate-spin inline mr-2" /> Loading...</td></tr>
+                                    ) : contributions.map((c) => (
+                                        <tr key={c.id || c.tx_hash} onClick={() => setDetailItem({ type: 'contribution', data: c })} className="hover:bg-white/[0.02] transition-colors group cursor-pointer">
+                                            <td className="p-5 text-zinc-400 font-medium">
+                                                {new Date(c.block_timestamp || c.created_at).toLocaleDateString()}
+                                                <div className="text-[10px] text-zinc-600">{new Date(c.block_timestamp || c.created_at).toLocaleTimeString()}</div>
+                                            </td>
+                                            <td className="p-5">
+                                                <a href={`https://basescan.org/tx/${c.tx_hash}`} target="_blank" className="text-violet-400 hover:text-violet-300 flex items-center gap-1 font-mono">
+                                                    {c.tx_hash.slice(0, 10)}... <Globe size={12} />
+                                                </a>
+                                            </td>
+                                            {contribTab === 'history' && (
+                                                <>
+                                                    <td className="p-5">
+                                                        <div className="font-mono text-zinc-300">{c.donor_address?.slice(0, 6)}...{c.donor_address?.slice(-4)}</div>
+                                                        {c.is_anonymous && <span className="text-[10px] text-zinc-500 bg-white/5 px-1.5 rounded">Anonymous</span>}
+                                                    </td>
+                                                    <td className="p-5 font-bold text-white">{c.amount_wei ? Number(formatEther(BigInt(c.amount_wei))).toFixed(6) : '-'} ETH</td>
+                                                </>
+                                            )}
+                                            <td className="p-5">
+                                                {contribTab === 'history' ? (
+                                                    c.is_valid === false ? (
+                                                        <span className="text-xs bg-red-500/10 text-red-500 px-2 py-0.5 rounded border border-red-500/20 font-bold uppercase">Invalidated</span>
+                                                    ) : (
+                                                        <span className="text-xs bg-green-500/10 text-green-400 px-2 py-0.5 rounded border border-green-500/20 font-bold uppercase">Confirmed</span>
+                                                    )
+                                                ) : c.status === 'failed' ? (
+                                                    <span className="text-xs bg-red-500/10 text-red-500 px-2 py-0.5 rounded border border-red-500/20 font-bold uppercase" title={c.last_error}>Failed</span>
+                                                ) : (
+                                                    <span className="text-xs bg-yellow-500/10 text-yellow-400 px-2 py-0.5 rounded border border-yellow-500/20 font-bold uppercase">Pending</span>
+                                                )}
+                                            </td>
+                                            <td className="p-5 text-right">
+                                                {contribTab === 'history' && c.is_valid !== false && (
+                                                    <button onClick={() => handleInvalidateClick(c.id)} className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="Invalidate Record">
+                                                        <Ban size={16} />
+                                                    </button>
+                                                )}
+                                                {c.status === 'failed' && (
+                                                    <div className="text-[10px] text-red-400 max-w-[100px] truncate">{c.last_error || 'Unknown Error'}</div>
+                                                )}
+                                                <ChevronRight size={16} className="inline ml-2 opacity-0 group-hover:opacity-100 transition-opacity text-zinc-500" />
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {contributions.length === 0 && !isLoadingData && (
+                                        <tr><td colSpan={6} className="p-10 text-center text-zinc-500">No records found for this view.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
                 {/* --- API API PLATFORM SECTION --- */}
                 {activeTab === 'api' && (
                     <div className="space-y-6">
@@ -536,7 +768,7 @@ export default function DashboardPage() {
 
                                 <div className="grid gap-4">
                                     {isLoadingData ? <Loader2 className="animate-spin text-zinc-500 mx-auto" /> : apiKeys.map((key) => (
-                                        <div key={key.id} className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                                        <div key={key.id} onClick={() => setDetailItem({ type: 'apikey', data: key })} className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 cursor-pointer hover:bg-white/10 transition-colors group relative">
                                             <div>
                                                 <div className="flex items-center gap-3 mb-2">
                                                     <div className="font-mono text-lg text-white font-bold tracking-tight">{key.prefix}•••••••••••••</div>
@@ -552,11 +784,14 @@ export default function DashboardPage() {
                                                 <div className="text-sm text-zinc-400 flex items-center gap-4">
                                                     <span className="flex items-center gap-1"><Globe size={12} /> {key.environment}</span>
                                                     <span className="flex items-center gap-1 bg-white/5 px-2 rounded text-xs text-zinc-300">{key.plan?.name || 'Free'} Plan</span>
-                                                    <span className="text-zinc-500 text-xs">ID: {key.id}</span>
+                                                    <span className="text-zinc-500 text-xs">ID: {key.id.slice(0, 8)}...</span>
+                                                </div>
+                                                <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity md:hidden">
+                                                    <ChevronRight size={20} className="text-zinc-500" />
                                                 </div>
                                             </div>
                                             {isAdmin && (
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                                                     <button
                                                         onClick={() => handleUpdateKey(key.id, { abuseFlag: !key.abuse_flag })}
                                                         className={`p-2 rounded-lg border transition-colors ${key.abuse_flag ? 'border-red-500 text-red-400 hover:bg-red-500/10' : 'border-white/10 text-zinc-400 hover:text-white hover:bg-white/5'}`}
@@ -644,11 +879,16 @@ export default function DashboardPage() {
                                     </thead>
                                     <tbody className="divide-y divide-white/5 text-sm">
                                         {auditLogs.map((log) => (
-                                            <tr key={log.id} className="hover:bg-white/5 transition-colors">
+                                            <tr key={log.id} onClick={() => setDetailItem({ type: 'audit', data: log })} className="hover:bg-white/5 transition-colors cursor-pointer group">
                                                 <td className="p-4 font-mono text-zinc-500">{new Date(log.created_at).toLocaleString()}</td>
                                                 <td className="p-4 font-bold text-violet-300">{log.action}</td>
                                                 <td className="p-4 font-mono text-xs">{log.target_id}</td>
-                                                <td className="p-4 text-zinc-400 truncate max-w-xs">{JSON.stringify(log.metadata)}</td>
+                                                <td className="p-4 text-zinc-400 truncate max-w-xs group-hover:text-white">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="truncate">{JSON.stringify(log.metadata)}</span>
+                                                        <ChevronRight size={16} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                    </div>
+                                                </td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -657,8 +897,6 @@ export default function DashboardPage() {
                         )}
                     </div>
                 )}
-
-                {/* --- END API SECTION --- */}
 
             </main>
 
@@ -701,6 +939,217 @@ export default function DashboardPage() {
                             )}
                         </motion.div>
                     </div>
+                )}
+
+                {/* Invalidation Modal */}
+                {invModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+                        <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-[#0a0a0a] border border-red-500/20 p-8 rounded-3xl w-full max-w-md shadow-2xl relative">
+                            <button onClick={() => setInvModalOpen(false)} className="absolute top-6 right-6 p-2 text-zinc-500 hover:text-white"><X size={20} /></button>
+                            <h2 className="text-2xl font-bold mb-4 text-red-500 flex items-center gap-2"><Ban size={24} /> Invalidate Record</h2>
+                            <p className="text-zinc-400 mb-6 text-sm">This will mark the contribution as invalid but keep it in the secure ledger. Please provide a reason.</p>
+
+                            <textarea
+                                value={invReason}
+                                onChange={(e) => setInvReason(e.target.value)}
+                                className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white resize-none h-32 mb-6 focus:border-red-500 outline-none"
+                                placeholder="Reason for invalidation..."
+                            />
+
+                            <div className="flex gap-3">
+                                <button onClick={() => setInvModalOpen(false)} className="flex-1 py-3 font-bold text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl">Cancel</button>
+                                <button onClick={confirmInvalidate} disabled={!invReason} className="flex-1 py-3 font-bold text-white bg-red-600 hover:bg-red-500 rounded-xl disabled:opacity-50">Confirm</button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Generic Detail Slider */}
+            <AnimatePresence>
+                {detailItem && (
+                    <>
+                        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={() => setDetailItem(null)} />
+                        <motion.div
+                            initial={{ x: "100%" }}
+                            animate={{ x: 0 }}
+                            exit={{ x: "100%" }}
+                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            className="fixed inset-y-0 right-0 z-50 w-full max-w-xl bg-[#0a0a0a] border-l border-white/10 shadow-2xl flex flex-col"
+                        >
+                            <div className="p-6 border-b border-white/10 flex items-center justify-between bg-white/5">
+                                <h2 className="text-xl font-bold flex items-center gap-2">
+                                    {detailItem.type === 'audit' && <><FileText size={20} /> Audit Log Details</>}
+                                    {detailItem.type === 'contribution' && <><Coins size={20} /> Contribution Details</>}
+                                    {detailItem.type === 'apikey' && <><Key size={20} /> API Key Details</>}
+                                </h2>
+                                <button onClick={() => setDetailItem(null)} className="p-2 hover:bg-white/10 rounded-lg transition-colors"><X size={20} /></button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                                {/* AUDIT LOG VIEW */}
+                                {detailItem.type === 'audit' && (
+                                    <>
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase">Timestamp</label>
+                                            <div className="text-white font-mono">{new Date(detailItem.data.created_at).toLocaleString()}</div>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase">Action</label>
+                                            <div className="text-violet-400 font-bold text-lg">{detailItem.data.action}</div>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase">Actor ID</label>
+                                            <div className="text-zinc-300 font-mono text-sm break-all">{detailItem.data.actor_id}</div>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase">Target ID</label>
+                                            <div className="text-zinc-300 font-mono text-sm break-all">{detailItem.data.target_id}</div>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Full Metadata</label>
+                                            <pre className="bg-black border border-white/10 p-4 rounded-xl overflow-x-auto text-xs font-mono text-green-400 leading-relaxed whitespace-pre-wrap break-words">
+                                                {JSON.stringify(detailItem.data.metadata, null, 2)}
+                                            </pre>
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* CONTRIBUTION VIEW */}
+                                {detailItem.type === 'contribution' && (
+                                    <>
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase">Status</label>
+                                            <div className="mt-1">
+                                                {detailItem.data.is_valid === false ? (
+                                                    <span className="text-sm bg-red-500/10 text-red-500 px-3 py-1 rounded font-bold uppercase border border-red-500/20">Invalidated</span>
+                                                ) : detailItem.data.status === 'failed' ? (
+                                                    <span className="text-sm bg-red-500/10 text-red-500 px-3 py-1 rounded font-bold uppercase border border-red-500/20">Failed</span>
+                                                ) : detailItem.data.status === 'confirmed' || detailItem.data.is_valid ? (
+                                                    <span className="text-sm bg-green-500/10 text-green-400 px-3 py-1 rounded font-bold uppercase border border-green-500/20">Confirmed</span>
+                                                ) : (
+                                                    <span className="text-sm bg-yellow-500/10 text-yellow-400 px-3 py-1 rounded font-bold uppercase border border-yellow-500/20">Pending</span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {detailItem.data.status === 'failed' && (
+                                            <div>
+                                                <label className="text-xs font-bold text-red-500 uppercase">Failure Reason</label>
+                                                <div className="text-red-400 font-mono text-sm border border-red-500/20 bg-red-500/5 p-3 rounded-lg mt-1">{detailItem.data.last_error || "Unknown Error"}</div>
+                                            </div>
+                                        )}
+
+                                        {detailItem.data.is_valid === false && (
+                                            <div>
+                                                <label className="text-xs font-bold text-red-500 uppercase">Invalidation Reason</label>
+                                                <div className="text-red-400 font-mono text-sm border border-red-500/20 bg-red-500/5 p-3 rounded-lg mt-1">
+                                                    {detailItem.data.invalid_reason || "No reason provided"}
+                                                    <div className="text-[10px] text-red-300/50 mt-1">Invalidated at: {new Date(detailItem.data.invalidated_at).toLocaleString()}</div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase">Transaction Hash</label>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <code className="bg-black/30 px-2 py-1 rounded text-sm font-mono text-zinc-300 break-all">{detailItem.data.tx_hash}</code>
+                                                <a href={`https://basescan.org/tx/${detailItem.data.tx_hash}`} target="_blank" className="p-1 hover:bg-white/10 rounded"><Globe size={14} className="text-violet-400" /></a>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase">Donor Address</label>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <code className="bg-black/30 px-2 py-1 rounded text-sm font-mono text-zinc-300 break-all">{detailItem.data.donor_address || detailItem.data.wallet_address || 'N/A'}</code>
+                                            </div>
+                                            {detailItem.data.is_anonymous && (
+                                                <span className="inline-block mt-2 text-[10px] text-zinc-500 bg-white/5 px-2 py-0.5 rounded border border-white/5">Marked Anonymous</span>
+                                            )}
+                                        </div>
+
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase">Amount</label>
+                                            <div className="text-white text-xl font-bold font-mono mt-1">
+                                                {detailItem.data.amount_wei ? Number(formatEther(BigInt(detailItem.data.amount_wei))).toFixed(6) : (detailItem.data.total_amount_wei ? Number(formatEther(BigInt(detailItem.data.total_amount_wei))).toFixed(6) : '0')} ETH
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Raw Data</label>
+                                            <pre className="bg-black border border-white/10 p-4 rounded-xl overflow-x-auto text-xs font-mono text-zinc-400 leading-relaxed whitespace-pre-wrap break-words">
+                                                {JSON.stringify(detailItem.data, null, 2)}
+                                            </pre>
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* API KEY VIEW */}
+                                {detailItem.type === 'apikey' && (
+                                    <>
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <label className="text-xs font-bold text-zinc-500 uppercase">Status</label>
+                                                <div className="mt-1">
+                                                    <span className={`px-3 py-1 rounded text-sm font-bold uppercase tracking-wider ${detailItem.data.is_active ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                                                        {detailItem.data.is_active ? 'Active' : 'Revoked'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            {detailItem.data.abuse_flag && (
+                                                <div className="text-right">
+                                                    <label className="text-xs font-bold text-red-500 uppercase">Flag</label>
+                                                    <div className="mt-1">
+                                                        <span className="flex items-center gap-1 px-3 py-1 rounded text-sm font-bold uppercase tracking-wider bg-red-600/20 text-red-500 border border-red-500/20">
+                                                            <Ban size={14} /> BANNED
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase">Key Prefix</label>
+                                            <div className="text-white font-mono text-xl tracking-widest mt-1">{detailItem.data.prefix}•••••••••••••</div>
+                                        </div>
+
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase">Owner ID</label>
+                                            <div className="bg-black/30 p-3 rounded-lg border border-white/5 font-mono text-zinc-300 break-all">{detailItem.data.owner_id || detailItem.data.user_id}</div>
+                                        </div>
+
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase">Key ID (Internal)</label>
+                                            <div className="font-mono text-xs text-zinc-500 break-all">{detailItem.data.id}</div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-xs font-bold text-zinc-500 uppercase">Plan</label>
+                                                <div className="text-white font-bold">{detailItem.data.plan?.name || 'Free'}</div>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-zinc-500 uppercase">Environment</label>
+                                                <div className="text-white flex items-center gap-2"><Globe size={14} /> {detailItem.data.environment}</div>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase">Created At</label>
+                                            <div className="text-zinc-400">{new Date(detailItem.data.created_at).toLocaleString()}</div>
+                                        </div>
+
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Raw Data</label>
+                                            <pre className="bg-black border border-white/10 p-4 rounded-xl overflow-x-auto text-xs font-mono text-zinc-400 leading-relaxed whitespace-pre-wrap break-words">
+                                                {JSON.stringify(detailItem.data, null, 2)}
+                                            </pre>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </motion.div>
+                    </>
                 )}
             </AnimatePresence>
 

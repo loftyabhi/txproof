@@ -53,6 +53,15 @@ export function middleware(request: NextRequest) {
         return NextResponse.redirect(url, 308);
     }
 
+    // 5. Security Headers for Privileged Routes
+    if (pathname.startsWith('/dashboard')) {
+        const response = NextResponse.next();
+        response.headers.set('Cache-Control', 'no-store, max-age=0, must-revalidate');
+        response.headers.set('Pragma', 'no-cache');
+        response.headers.set('Expires', '0');
+        return response;
+    }
+
     return NextResponse.next();
 }
 

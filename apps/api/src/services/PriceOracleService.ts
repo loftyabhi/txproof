@@ -1,5 +1,7 @@
 import axios from 'axios';
-import Redis from 'ioredis';
+
+// Make Redis optional - will gracefully degrade to no caching if not available
+type RedisClient = any;
 
 export enum PriceMode {
     HISTORICAL = 'historical',
@@ -75,7 +77,7 @@ export class PriceOracleService {
     private readonly defillamaUrl = 'https://coins.llama.fi/prices/current';
     private readonly coincapUrl = 'https://api.coincap.io/v2';
 
-    private redis: Redis;
+    private redis: RedisClient | null = null;
 
     // DETERMINISTIC ORDER: Provider selection priority is strictly defined by this array order.
     private readonly providers: PriceSourceCapabilities[] = [
@@ -106,19 +108,28 @@ export class PriceOracleService {
     ];
 
     constructor() {
-        const redisUrl = process.env.REDIS_URL;
-        const options = {
-            retryStrategy: (times: number) => Math.min(times * 50, 2000),
-            maxRetriesPerRequest: 1
-        };
+        // Redis is optional - if not available, caching is disabled
+        // This allows the service to work without Redis dependency
+        try {
+            // Only try to load Redis if the module is available
+            const Redis = require('ioredis');
+            const redisUrl = process.env.REDIS_URL;
+            const options = {
+                retryStrategy: (times: number) => Math.min(times * 50, 2000),
+                maxRetriesPerRequest: 1
+            };
 
-        if (redisUrl) {
-            this.redis = new Redis(redisUrl, options);
-        } else {
-            this.redis = new Redis(options);
+            if (redisUrl) {
+                this.redis = new Redis(redisUrl, options);
+            } else {
+                this.redis = new Redis(options);
+            }
+
+            this.redis.on('error', () => { }); // Suppress connection errors
+        } catch (e) {
+            // Redis not available, continue without caching
+            this.redis = null;
         }
-
-        this.redis.on('error', () => { }); // Suppress connection errors to avoid spam
     }
 
     /**
@@ -310,7 +321,7 @@ export class PriceOracleService {
 
     private async getFromCache(key: string): Promise<PriceResult | null> {
         try {
-            if (this.redis.status === 'ready') {
+            if (this.redis && this.redis.status === 'ready') {
                 const data = await this.redis.get(key);
                 if (data) return JSON.parse(data);
             }
@@ -322,7 +333,7 @@ export class PriceOracleService {
 
     private async setInCache(key: string, data: PriceResult, ttlSeconds: number): Promise<void> {
         try {
-            if (this.redis.status === 'ready') {
+            if (this.redis && this.redis.status === 'ready') {
                 await this.redis.set(key, JSON.stringify(data), 'EX', ttlSeconds);
             }
         } catch (e) {
