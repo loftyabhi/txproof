@@ -7,7 +7,7 @@ The Bill Generation system has been migrated from a server-side Puppeteer archit
 
 ### Frontend (Next.js)
 *   **Route**: `/print/bill/[billId]`
-*   **Component**: [`BillPrintPage`](../apps/web/src/app/print/bill/[billId]/page.tsx)
+*   **Component**: [`BillPrintPage`](file:///e:/website%20development/txproof.xyz/apps/web/src/app/print/bill/%5Bid%5D/page.tsx)
 *   **Styling**: Dedicated `print.css` with `@media print` rules.
 *   **Logic**:
     1.  Fetches `BillViewModel` JSON from API.

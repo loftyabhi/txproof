@@ -78,14 +78,14 @@ Transactions move through three states in `pending_contributions`:
 ## 3. Key Components & Files
 
 ### A. API Layer (New)
-*   **Service:** [`apps/api/src/services/ContributionService.ts`](file:///e:/website%20development/GChain%20Receipt/apps/api/src/services/ContributionService.ts)
+*   **Service**: `apps/api/src/services/ContributionService.ts`
     *   Handles receipt verification validation.
-*   **Endpoint:** `POST /api/contributions/submit`
-*   **Worker:** [`apps/api/scripts/retry_contributions.ts`](file:///e:/website%20development/GChain%20Receipt/apps/api/scripts/retry_contributions.ts)
+*   **Endpoint**: `POST /api/contributions/submit`
+*   **Worker**: `apps/api/src/scripts/retry_contributions.ts`
 
 ### B. Smart Contract Layer
-*   **File:** [`packages/contracts/contracts/SupportVault.sol`](file:///e:/website%20development/GChain%20Receipt/packages/contracts/contracts/SupportVault.sol)
-*   **Role:** Securely holds funds and emits `Contributed` events.
+*   **File**: `packages/contracts/contracts/SupportVault.sol`
+    *   Role: Securely holds funds and emits `Contributed` events.
 
 ### C. Database Layer
 *   **New Table:** `pending_contributions` (Tracks ingestion state).
@@ -93,8 +93,8 @@ Transactions move through three states in `pending_contributions`:
 *   **Legacy:** `indexer_state` (Only used by backfill indexer).
 
 ### D. Legacy Indexer
-*   **File:** [`apps/api/src/services/IndexerService.ts`](file:///e:/website%20development/GChain%20Receipt/apps/api/src/services/IndexerService.ts)
-*   **Status:** **DEPRECATED for live traffic.** Use only for database reconstruction.
+*   **File**: `apps/api/src/services/IndexerService.ts`
+*   **Status**: **DEPRECATED for live traffic.** Use only for database reconstruction.
 
 ---
 
@@ -112,7 +112,7 @@ curl -X POST http://localhost:3001/api/contributions/submit \
 ### Running the Retry Worker
 The worker should run systematically (e.g., via Cron every 5 minutes).
 ```bash
-npx ts-node apps/api/scripts/retry_contributions.ts
+npm run test:verification -w apps/api  # Or direct: npx ts-node apps/api/src/scripts/retry_contributions.ts
 ```
 
 ### Legacy Backfill

@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc && npm run postbuild",
-    "postbuild": "node -e \"const fs=require('fs'); const path=require('path'); const src='src/services/email/templates'; const dist='dist/services/email/templates'; if(fs.existsSync(src)) { fs.mkdirSync(dist, {recursive:true}); fs.readdirSync(src).forEach(f => fs.copyFileSync(path.join(src, f), path.join(dist, f))); }\"",
+    "postbuild": "node scripts/postbuild.js",
     "start": "node dist/index.js",
     "test:verification": "tsx src/scripts/test-receipt-verification.ts",
     "migrate:hashes": "tsx src/scripts/migrate-receipt-hashes.ts --apply",

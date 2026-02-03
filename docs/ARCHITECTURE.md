@@ -24,9 +24,10 @@ We bypass Prisma for specific high-performance queries, interacting directly wit
 
 To ensure "Enterprise-Grade" performance and deterministic pricing cost-handling, we implement a strict 3-layer caching waterfall.
 
-### Layer 1: Price Oracle (Redis)
+### Layer 1: Price Oracle (Redis - Optional)
 **Purpose**: Minimize calls to expensive external price APIs (Alchemy, CoinGecko) and ensure tax-lot consistency.
 *   **Technology**: Redis (via `ioredis`).
+*   **Status**: **Optional**. If Redis is not configured, the system falls back to direct API calls with aggressive in-memory caching for the duration of the process.
 *   **Retention**:
     *   **Historical Prices**: `30 Days` (High consistency required for audit).
     *   **Current Prices**: `5 Minutes` (Real-time display).

@@ -6,17 +6,17 @@ TxProof is a full-stack application designed to generate detailed financial rece
 
 ## 🌟 Key Features
 
--   **Automated Receipt Generation**: Converts- **Transaction Classification**: Enterprise-grade classifier for Tx Types.
+- **Automated Receipt Generation**: Converts blockchain transactions into professional, audit-ready PDF receipts.
+- **Transaction Classification**: Enterprise-grade deterministic semantic classifier for transaction types.
 - **Support System**: Accept donations via `SupportVault.sol` with **Anonymous** contribution support.
-- **Event-Driven Indexer**: Hybrid indexing with 24h passive mode + instant trigger on contribution.
-- **Blockscout Integration**: Fetch internal transactions for accurate financial records. ERC20 tokens.
+- **Event-Driven Indexer**: Hybrid indexing with live push-based ingestion + background verification.
+- **Blockscout Integration**: Fetch internal transactions for accurate financial records.
 - **Admin Dashboard**: Control center to manage Advertisement campaigns (Web & PDF placements).
--   **Zero-Knowledge Privacy**: Client-side processing architecture ensuring user data and private keys never leave the browser.
--   **Enterprise Security**: Strict physical separation of frontend and backend runtimes.
--   **Internal Transactions**: Detailed tracking of smart contract executions.
--   **Historical Pricing**: Accurate point-in-time valuation.
--   **Soft Queue Architecture**: Database-backed job management for Free-Tier reliability.
--   **Smart Layouts**: High-quality, printable PDF layout using Puppeteer.
+- **Zero-Knowledge Privacy**: Client-side processing architecture ensuring sensitive user data never leaves the browser.
+- **Enterprise Security**: Strict physical separation of frontend and backend runtimes.
+- **Historical Pricing**: Accurate point-in-time valuation via multi-layered caching.
+- **Soft Queue Architecture**: Database-backed job management for high reliability.
+- **High-Fidelity Layouts**: Professional, printable layouts rendered natively in the browser.
 
 ## 🏗️ Architecture
 
@@ -25,16 +25,14 @@ This project uses a Workspace-based Monorepo structure:
 ```text
 /
 ├── apps/
-│   ├── web/                # [Next.js] Frontend
-│   └── api/                # [Node.js] Backend
+│   ├── web/                # [Next.js] Frontend & Client-Side Print Engine
+│   └── api/                # [Node.js] Backend & Semantic Classifier
 │
 ├── packages/
-│   ├── domain/             # Shared Types & Schemas (Zero Runtime)
-│   ├── contracts/          # Smart Contracts & Canonical ABIs
-│   ├── database/           # Shared PostgreSQL Client (Supabase) & Migrations
+│   ├── domain/             # Shared Types & Schemas
+│   ├── contracts/          # Smart Contracts & ABIs
+│   ├── database/           # PostgreSQL Client & Migrations
 │   └── config/             # Shared Environment Constants
-│
-└── tools/                  # Deployment & Verification Scripts
 ```
 
 ### 🧠 Support System & Persistence
@@ -47,17 +45,16 @@ The "Show Your Support" feature uses a **Hybrid Indexing** strategy:
 ## 🚀 Quick Start
 
 ### Prerequisites
--   Node.js v18+
--   Node.js v18+
--   PostgreSQL (Supabase)
--   PostgreSQL
+-   Node.js v22+ (LTS)
+-   PostgreSQL (Supabase recommended)
+-   Alchemy (or other RPC provider)
 
 ### Installation
 
 1.  **Clone and Install**:
     ```bash
     git clone <repository-url>
-    cd chain-receipt
+    cd txproof
     npm install  # Installs all workspace dependencies
     ```
 

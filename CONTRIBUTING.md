@@ -15,12 +15,11 @@ npm install
 
 ### 2. Project Structure
 
--   `apps/web`: Next.js Frontend.
--   `apps/api`: Express Backend.
+-   `apps/web`: Next.js Frontend & Client-side Print Engine.
+-   `apps/api`: Node.js/Express Backend & Semantic Classifier.
 -   `packages/contracts`: Smart Contracts & ABIs.
 -   `packages/domain`: Shared TypeScript interfaces.
--   `packages/database`: SQL Schema & Seeds.
--   `tools/`: Verification scripts.
+-   `packages/database`: SQL Schema & Migrations.
 
 ### 3. Running Locally
 
@@ -44,12 +43,11 @@ If you modify a shared package (e.g., `packages/domain`):
 3.  If you add a new dependency to a package, run `npm install` at the root.
 
 ### 5. PDF Generation
-
-The PDF engine has been migrated to a **Client-Side** architecture.
--   **Backend**: `apps/api` handles data fetching and caching (Soft Queue).
--   **Frontend**: `apps/web/src/app/print/bill/[id]` handles the actual rendering.
--   **Templates**: Located in `apps/api/templates`.
--   **Verification**: Run `npx ts-node tools/verification/verify_bill_service_v2.ts` to test PDF generation without running the full server.
+The PDF engine has been migrated to a **Client-Side** architecture for high-fidelity printing.
+-   **Backend**: `apps/api` handles transaction resolution, classification, and data caching (Soft Queue).
+-   **Frontend**: `apps/web/src/app/print/bill/[id]` handles the visual rendering and `window.print()` trigger.
+-   **Styles**: Print-specific layouts are managed in `apps/web/src/styles/print.css`.
+-   **Verification**: Run `npm run test:verification -w apps/api` to test the backend resolution logic.
 
 ## Code Style
 

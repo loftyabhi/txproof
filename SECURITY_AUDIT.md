@@ -1,7 +1,7 @@
 # Security Audit & Posture Report
 **Project:** TxProof
-**Date:** January 05, 2026
-**Version:** 1.0
+**Date:** February 03, 2026
+**Version:** 1.1
 
 ## 1. Executive Summary
 This document outlines the security architecture, potential risks, and implemented mitigations for the TxProof ecosystem. The system is designed with a "Trust but Verify" approach, particularl in its interaction with blockchain data and user inputs.
@@ -43,7 +43,12 @@ This document outlines the security architecture, potential risks, and implement
     -   `txHash` format is strictly regex-validated (`^0x[a-fA-F0-9]{64}$`).
     -   Contract address and Event Topics are verified against the deployed contract to prevent spoofing with fake events from other contracts.
 
-### 4.2 Authentication & Authorization
+### 4.2 Semantic Classification & Determinism
+- **Deterministic Engine**: The classifier follows a prioritized rule pipeline. This prevents "hallucinated" classifications.
+- **Input Neutrality**: The classifier only uses blockchain data (logs, traces, events) and verified address lists. No external user-provided labels are trusted for classification.
+- **Trace Analysis**: Deep trace analysis (where available via RPC) is used to verify internal value transfers.
+
+### 4.3 Authentication & Authorization
 -   **Admin Access:** Secure Login via Wallet Signature (SIWE-like pattern).
     -   The Admin verifies ownership of the `ADMIN_ADDRESS` by signing a nonce.
     -   A JWT is issued upon successful verification.
