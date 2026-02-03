@@ -318,4 +318,90 @@ router.post('/contributions/:id/revalidate', async (req: Request, res: Response)
     }
 });
 
+/**
+ * GET /api/v1/admin/users
+ * List all users with profile data
+ */
+router.get('/users', async (req: Request, res: Response) => {
+    try {
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(100);
+
+        if (error) throw error;
+        res.json(data);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/**
+ * GET /api/v1/admin/users/:id/logs
+ * View specific user activity logs
+ */
+router.get('/users/:id/logs', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        // 1. Get user's API keys
+        const { data: keys } = await supabase.from('api_keys').select('id').eq('owner_user_id', id);
+        const keyIds = keys?.map(k => k.id) || [];
+
+        // 2. Get API usage logs for these keys
+        const { data, error } = await supabase
+            .from('api_usage')
+            .select('*')
+            .in('api_key_id', keyIds)
+            .order('created_at', { ascending: false })
+            .limit(50);
+
+        if (error) throw error;
+        res.json(data);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/**
+ * POST /api/v1/admin/users/:id/verify
+ * Manually verify a user's email (Deletes pending tokens + Audit Log)
+ */
+router.post('/users/:id/verify', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const actorId = (req as any).user?.address || 'admin';
+
+        // 1. Update User
+        const { data, error } = await supabase
+            .from('users')
+            .update({ is_email_verified: true })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // 2. Delete any pending verification tokens
+        await supabase
+            .from('email_verification_tokens')
+            .delete()
+            .eq('user_id', id);
+
+        // 3. Audit Log
+        await auditService.log({
+            actorId,
+            action: 'EMAIL_VERIFIED_MANUAL',
+            targetId: id,
+            metadata: { user: data.wallet_address, email: data.email },
+            ip: req.ip
+        });
+
+        res.json({ success: true, user: data });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+
 export default router;

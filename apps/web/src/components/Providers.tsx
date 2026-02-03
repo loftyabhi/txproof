@@ -5,6 +5,7 @@ import { mainnet, base, sepolia, baseSepolia } from 'wagmi/chains'
 import { injected, metaMask, walletConnect } from 'wagmi/connectors'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
+import { ConsoleAuthProvider } from '@/context/ConsoleAuthContext';
 
 // Ensure project ID is available
 const projectId = process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID
@@ -34,8 +35,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
     return (
         <WagmiProvider config={config}>
             <QueryClientProvider client={queryClient}>
-                {children}
-                <Toaster richColors position="bottom-right" theme="dark" />
+                <ConsoleAuthProvider>
+                    {children}
+                    <Toaster richColors position="bottom-right" theme="dark" />
+                </ConsoleAuthProvider>
             </QueryClientProvider>
         </WagmiProvider>
     )

@@ -39,8 +39,7 @@ export default function AdBanner() {
             <div className="w-full flex justify-center my-8">
                 <div className="relative w-[320px] h-[50px] md:w-[728px] md:h-[90px] overflow-hidden">
                     <iframe
-                        data-aa='2423044'
-                        src='//acceptable.a-ads.com/2423044/?size=Adaptive'
+                        data-aa='2426374' src='//acceptable.a-ads.com/2426374/?size=Adaptive'
                         style={{ border: 0, padding: 0, width: '100%', height: '100%', overflow: 'hidden', display: 'block', margin: 'auto' }}
                     />
                 </div>

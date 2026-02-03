@@ -207,3 +207,21 @@ export function verifyWebhookSignature(
         Buffer.from(computedSignature)
     );
 }
+
+/**
+ * Generate a cryptographically secure random token
+ * Used for verification links
+ */
+export function generateRandomToken(bytes: number = 32): string {
+    const crypto = require('crypto');
+    return crypto.randomBytes(bytes).toString('hex');
+}
+
+/**
+ * Compute SHA256 hash of a token
+ * Used for storing tokens securely in the database
+ */
+export function hashToken(token: string): string {
+    const crypto = require('crypto');
+    return crypto.createHash('sha256').update(token).digest('hex');
+}

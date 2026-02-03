@@ -3,7 +3,7 @@ import { Inter, JetBrains_Mono } from 'next/font/google';
 import { Suspense } from 'react';
 import './globals.css';
 import { Providers } from '@/components/Providers';
-import { Footer } from '@/components/Footer';
+import { FooterWrapper } from '@/components/FooterWrapper';
 import { GoogleAnalytics } from '@/components/analytics/GoogleAnalytics';
 import { ConsentBanner } from '@/components/analytics/ConsentBanner';
 import { ShareAttribution } from '@/components/analytics/ShareAttribution';
@@ -99,7 +99,7 @@ export default function RootLayout({
           </Suspense>
           <RealUserMonitoring /> {/* [Enterprise] RUM */}
           {children}
-          <Footer />
+          <FooterWrapper />
         </Providers>
       </body>
     </html>

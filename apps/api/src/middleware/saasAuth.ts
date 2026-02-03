@@ -68,9 +68,19 @@ export const saasMiddleware = async (req: Request, res: Response, next: NextFunc
         }
 
         // 3. Quota Limit (Monthly)
-        const allowed = await apiKeyService.checkAndIncrementUsage(details.id);
-        if (!allowed) {
-            return res.status(402).json({ code: 'QUOTA_EXCEEDED', error: 'Monthly Quota Exceeded' });
+        const quota = await apiKeyService.checkAndIncrementUsage(details.id);
+
+        // Standard Headers (Stripe-like)
+        res.setHeader('X-Quota-Limit', quota.limit);
+        res.setHeader('X-Quota-Used', quota.used);
+        res.setHeader('X-Quota-Remaining', quota.remaining);
+
+        if (!quota.allowed) {
+            // Overage logic handled in Service or here?
+            return res.status(402).json({
+                code: 'QUOTA_EXCEEDED',
+                error: 'Monthly Quota Exceeded. Please upgrade your plan.'
+            });
         }
 
         // Attach context

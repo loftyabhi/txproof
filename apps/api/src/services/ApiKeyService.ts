@@ -22,18 +22,17 @@ export class ApiKeyService {
      * Generate a new API Key.
      * Returns the raw key (Display Once) and stores the hash.
      */
-    async createKey(ownerId: string, planName: 'Free' | 'Pro' | 'Enterprise' = 'Free') {
+    async createKey(ownerId: string, planName: 'Free' | 'Pro' | 'Enterprise' = 'Free', options?: { ownerUserId?: string }) {
         // 1. Get Plan ID
         const { data: plan } = await supabase
             .from('plans')
-            .select('id')
+            .select('id, monthly_quota')
             .eq('name', planName)
             .single();
 
         if (!plan) throw new Error(`Plan ${planName} not found`);
 
         // 2. Generate Key
-        // Format: sk_live_<24-char-hex>
         const random = randomBytes(24).toString('hex');
         const rawKey = `sk_live_${random}`;
         const prefix = `sk_live_${random.substring(0, 4)}`;
@@ -46,7 +45,10 @@ export class ApiKeyService {
                 key_hash: hash,
                 prefix: prefix,
                 owner_id: ownerId,
+                owner_user_id: options?.ownerUserId || null,
                 plan_id: plan.id,
+                plan_tier: planName,
+                quota_limit: plan.monthly_quota,
                 environment: 'live',
                 is_active: true
             })
@@ -57,7 +59,7 @@ export class ApiKeyService {
 
         return {
             id: data.id,
-            key: rawKey, // Show this ONLY once
+            key: rawKey,
             prefix
         };
     }
@@ -112,22 +114,71 @@ export class ApiKeyService {
     }
 
     /**
-     * Check Quota & Increment
-     * Returns true if allowed, false if quota exceeded
+     * Check if key has quota remaining and increment usage.
+     * Returns detailed object for header injection.
      */
-    async checkAndIncrementUsage(apiKeyId: string): Promise<boolean> {
-        const { data, error } = await supabase.rpc('increment_api_usage', {
-            p_key_id: apiKeyId,
+    /**
+     * Check if key has quota remaining and increment usage.
+     * Returns detailed object for header injection.
+     */
+    async checkAndIncrementUsage(keyId: string): Promise<{
+        allowed: boolean;
+        used: number;
+        limit: number;
+        remaining: number
+    }> {
+        // 1. Get Current Usage and Plan Limit
+        const { data: keyData, error: keyError } = await supabase
+            .from('api_keys')
+            .select(`
+                id, quota_limit,
+                plan:plans (monthly_quota, name)
+            `)
+            .eq('id', keyId)
+            .single();
+
+        if (keyError || !keyData) {
+            return { allowed: false, used: 0, limit: 0, remaining: 0 };
+        }
+
+        // Fix: Handle partial/array TS inference
+        const planObj = Array.isArray(keyData.plan) ? keyData.plan[0] : keyData.plan;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const planLimit = (planObj as any)?.monthly_quota;
+
+        const limit = planLimit || keyData.quota_limit || 100;
+
+        // 2. Increment usage mechanism
+        const { data: rpcResult, error } = await supabase.rpc('increment_api_usage', {
+            p_key_id: keyId,
             p_cost: 1
         });
 
         if (error) {
             console.error('Usage RPC Error:', error);
-            // Fail open or closed? Closed for safety.
-            return false;
+            // Default closed behavior for safety
+            return { allowed: false, used: limit, limit, remaining: 0 };
         }
 
-        return data as boolean;
+        const isAllowed = !!rpcResult; // RPC returns boolean
+
+        // 3. Get accurate count for headers
+        const { data: agg } = await supabase
+            .from('api_usage_aggregates')
+            .select('request_count')
+            .eq('api_key_id', keyId)
+            .eq('period_start', new Date().toISOString().slice(0, 7) + '-01') // YYYY-MM-01
+            .single();
+
+        const currentUsed = (agg?.request_count || 0);
+        const remaining = Math.max(0, limit - currentUsed);
+
+        return {
+            allowed: isAllowed,
+            used: currentUsed,
+            limit,
+            remaining
+        };
     }
 
     /**

@@ -38,7 +38,7 @@ export default function DashboardPage() {
     const [isLoadingAuth, setIsLoadingAuth] = useState(true);
     const [csrfToken, setCsrfToken] = useState('');
     const [hasHydrated, setHasHydrated] = useState(false);
-    const [activeTab, setActiveTab] = useState<'ads' | 'vault' | 'contributions' | 'api'>('ads');
+    const [activeTab, setActiveTab] = useState<'ads' | 'vault' | 'contributions' | 'api' | 'users'>('ads');
     const [apiTab, setApiTab] = useState<'keys' | 'analytics' | 'sla' | 'audit'>('keys');
 
     // Data States
@@ -47,8 +47,9 @@ export default function DashboardPage() {
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
     const [apiStats, setApiStats] = useState<any>(null);
     const [contributions, setContributions] = useState<any[]>([]);
+    const [users, setUsers] = useState<any[]>([]);
     const [isLoadingData, setIsLoadingData] = useState(false);
-    const [detailItem, setDetailItem] = useState<{ type: 'audit' | 'contribution' | 'apikey', data: any } | null>(null);
+    const [detailItem, setDetailItem] = useState<{ type: 'audit' | 'contribution' | 'apikey' | 'user', data: any } | null>(null);
 
     // Form States
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -150,6 +151,7 @@ export default function DashboardPage() {
 
         if (activeTab === 'ads') fetchData();
         if (activeTab === 'contributions') fetchContributions();
+        if (activeTab === 'users') fetchUsers();
         if (activeTab === 'api') {
             if (apiTab === 'keys') fetchApiKeys();
             if (apiTab === 'audit') fetchAuditLogs();
@@ -185,6 +187,16 @@ export default function DashboardPage() {
             const endpoint = `/api/v1/admin/usage`;
             const res = await axios.get(endpoint, { withCredentials: true });
             setApiStats(res.data);
+        } catch (err) { handleError(err); }
+        finally { setIsLoadingData(false); }
+    };
+
+    const fetchUsers = async () => {
+        setIsLoadingData(true);
+        try {
+            const endpoint = `/api/v1/admin/users`;
+            const res = await axios.get(endpoint, { withCredentials: true });
+            setUsers(res.data);
         } catch (err) { handleError(err); }
         finally { setIsLoadingData(false); }
     };
@@ -478,6 +490,9 @@ export default function DashboardPage() {
                             <button onClick={() => setActiveTab('contributions')} className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'contributions' ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/25' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}>
                                 <Globe size={16} /> Contributions
                             </button>
+                            <button onClick={() => setActiveTab('users')} className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'users' ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/25' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}>
+                                <Settings size={16} /> Users
+                            </button>
                         </>
                     )}
                     <button onClick={() => setActiveTab('api')} className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'api' ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/25' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}>
@@ -735,6 +750,78 @@ export default function DashboardPage() {
                                     ))}
                                     {contributions.length === 0 && !isLoadingData && (
                                         <tr><td colSpan={6} className="p-10 text-center text-zinc-500">No records found for this view.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* --- USERS TAB --- */}
+                {activeTab === 'users' && (
+                    <div className="space-y-6">
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-2xl font-bold text-white">Console Users</h2>
+                            <button onClick={fetchUsers} className="p-2 text-zinc-400 hover:text-white transition-colors bg-white/5 rounded-lg border border-white/10">
+                                <Activity size={18} />
+                            </button>
+                        </div>
+
+                        <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-md">
+                            <table className="w-full text-left">
+                                <thead className="bg-zinc-900/50 text-zinc-500 text-[10px] uppercase font-bold tracking-widest">
+                                    <tr>
+                                        <th className="p-5">User / Wallet</th>
+                                        <th className="p-5">Email Status</th>
+                                        <th className="p-5">Socials</th>
+                                        <th className="p-5">Joined</th>
+                                        <th className="p-5 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5 text-sm">
+                                    {isLoadingData ? (
+                                        <tr><td colSpan={5} className="p-10 text-center"><Loader2 className="animate-spin inline mr-2" /> Loading...</td></tr>
+                                    ) : users.map((u) => (
+                                        <tr key={u.id} onClick={() => setDetailItem({ type: 'user', data: u })} className="hover:bg-white/[0.02] transition-colors group cursor-pointer">
+                                            <td className="p-5">
+                                                <div className="font-bold text-white">{u.name || 'Anonymous User'}</div>
+                                                <div className="font-mono text-xs text-zinc-500">{u.wallet_address?.slice(0, 8)}...{u.wallet_address?.slice(-6)}</div>
+                                            </td>
+                                            <td className="p-5">
+                                                {u.email ? (
+                                                    <div className="flex flex-col gap-1">
+                                                        <div className="text-zinc-300">{u.email}</div>
+                                                        <span className={`w-fit px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${u.is_email_verified ? 'bg-green-500/10 text-green-400' : 'bg-yellow-500/10 text-yellow-400'}`}>
+                                                            {u.is_email_verified ? 'Verified' : 'Pending'}
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-zinc-600 text-xs italic">No email</span>
+                                                )}
+                                            </td>
+                                            <td className="p-5">
+                                                <div className="flex gap-2">
+                                                    {Object.keys(u.social_config || {}).map(s => (
+                                                        <span key={s} className="bg-white/5 px-2 py-0.5 rounded text-[10px] text-zinc-400 capitalize">{s}</span>
+                                                    ))}
+                                                    {Object.keys(u.social_config || {}).length === 0 && <span className="text-zinc-600">-</span>}
+                                                </div>
+                                            </td>
+                                            <td className="p-5 text-zinc-400">
+                                                {new Date(u.created_at).toLocaleDateString()}
+                                            </td>
+                                            <td className="p-5 text-right">
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setDetailItem({ type: 'user', data: u }); }}
+                                                    className="p-2 text-zinc-500 hover:text-white bg-white/5 rounded-lg border border-white/10 opacity-0 group-hover:opacity-100 transition-all"
+                                                >
+                                                    <ArrowDownCircle size={16} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {users.length === 0 && !isLoadingData && (
+                                        <tr><td colSpan={5} className="p-10 text-center text-zinc-500">No users found.</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -1147,6 +1234,75 @@ export default function DashboardPage() {
                                         </div>
                                     </>
                                 )}
+
+                                {/* USER VIEW */}
+                                {detailItem.type === 'user' && (
+                                    <>
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <label className="text-xs font-bold text-zinc-500 uppercase">Verification Status</label>
+                                                <div className="mt-1">
+                                                    <span className={`px-3 py-1 rounded text-sm font-bold uppercase tracking-wider ${detailItem.data.is_email_verified ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'}`}>
+                                                        {detailItem.data.is_email_verified ? 'Verified' : 'Pending Verification'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            {!detailItem.data.is_email_verified && (
+                                                <button
+                                                    onClick={async () => {
+                                                        try {
+                                                            const res = await axios.post(`/api/v1/admin/users/${detailItem.data.id}/verify`, {}, { headers: { 'X-CSRF-Token': csrfToken } });
+                                                            toast.success("User verified manually");
+                                                            setDetailItem({ ...detailItem, data: res.data.user });
+                                                            fetchUsers();
+                                                        } catch (err) { handleError(err); }
+                                                    }}
+                                                    className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2"
+                                                >
+                                                    <Check size={14} /> Verify Manually
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase">Wallet Address</label>
+                                            <div className="bg-black/30 p-3 rounded-lg border border-white/5 font-mono text-zinc-300 break-all">{detailItem.data.wallet_address}</div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-xs font-bold text-zinc-500 uppercase">Name</label>
+                                                <div className="text-white font-bold">{detailItem.data.name || 'Not set'}</div>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-zinc-500 uppercase">Email</label>
+                                                <div className="text-white font-bold">{detailItem.data.email || 'Not set'}</div>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Social Links</label>
+                                            <div className="space-y-2">
+                                                {Object.entries(detailItem.data.social_config || {}).map(([platform, link]: [string, any]) => (
+                                                    <div key={platform} className="flex items-center justify-between bg-white/5 p-3 rounded-lg">
+                                                        <span className="text-zinc-400 capitalize">{platform}</span>
+                                                        <a href={link} target="_blank" className="text-blue-400 text-sm hover:underline">{link}</a>
+                                                    </div>
+                                                ))}
+                                                {Object.keys(detailItem.data.social_config || {}).length === 0 && <div className="text-zinc-600 text-sm italic">No social links configured.</div>}
+                                            </div>
+                                        </div>
+
+                                        <UserLogsView userId={detailItem.data.id} />
+
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Raw Data</label>
+                                            <pre className="bg-black border border-white/10 p-4 rounded-xl overflow-x-auto text-xs font-mono text-zinc-400 leading-relaxed whitespace-pre-wrap break-words">
+                                                {JSON.stringify(detailItem.data, null, 2)}
+                                            </pre>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </motion.div>
                     </>
@@ -1156,3 +1312,52 @@ export default function DashboardPage() {
         </div>
     );
 }
+
+// User Activity Logs Sub-Component
+function UserLogsView({ userId }: { userId: string }) {
+    const [logs, setLogs] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchLogs = async () => {
+            try {
+                const res = await axios.get(`/api/v1/admin/users/${userId}/logs`);
+                setLogs(res.data);
+            } catch (e) { console.error(e); }
+            finally { setLoading(false); }
+        };
+        fetchLogs();
+    }, [userId]);
+
+    return (
+        <div>
+            <label className="text-xs font-bold text-zinc-500 uppercase mb-3 block">Activity History (API Usage)</label>
+            <div className="bg-black/20 rounded-xl border border-white/10 overflow-hidden">
+                <table className="w-full text-left text-xs">
+                    <thead className="bg-white/5 text-zinc-500 font-bold">
+                        <tr>
+                            <th className="p-3">Time</th>
+                            <th className="p-3">Status</th>
+                            <th className="p-3">Endpoint</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                        {loading ? (
+                            <tr><td colSpan={3} className="p-4 text-center"><Loader2 className="animate-spin inline-block" size={14} /></td></tr>
+                        ) : logs.map((l, i) => (
+                            <tr key={i} className="text-zinc-400">
+                                <td className="p-3 font-mono">{new Date(l.created_at).toLocaleTimeString()}</td>
+                                <td className="p-3">
+                                    <span className={l.status_code < 400 ? 'text-green-500' : 'text-red-500'}>{l.status_code}</span>
+                                </td>
+                                <td className="p-3 truncate max-w-[150px]">{l.path || '/check'}</td>
+                            </tr>
+                        ))}
+                        {logs.length === 0 && !loading && <tr><td colSpan={3} className="p-4 text-center text-zinc-600 italic">No recent activity.</td></tr>}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+

@@ -28,6 +28,7 @@ import webhooksRouter from './routes/v1/webhooks'; // [NEW]
 import templatesRouter from './routes/v1/templates'; // [NEW]
 import usageRouter from './routes/v1/usage'; // [NEW]
 import verificationRouter from './routes/v1/verification'; // [NEW]
+import { userRouter } from './routes/v1/userRouter'; // [NEW]
 
 dotenv.config();
 
@@ -104,6 +105,7 @@ app.use('/api/v1/webhooks', webhooksRouter); // [NEW]
 app.use('/api/v1/templates', templatesRouter); // [NEW]
 app.use('/api/v1/usage', usageRouter); // [NEW]
 app.use('/api/v1/verify', verificationRouter); // [NEW]
+app.use('/api/v1/user', userRouter); // [NEW]
 // Note: Admin router mounted below after verifyAdmin definition
 
 
