@@ -2,7 +2,8 @@ import { ClassificationEngine } from './classifier/core/Engine';
 import { TransactionType, ExecutionType, ClassificationResult, TransactionEnvelopeType } from './classifier/core/types';
 
 // Re-export types for consumers
-export { TransactionType, ExecutionType, TransactionEnvelopeType, ClassificationResult };
+export { TransactionType, ExecutionType, TransactionEnvelopeType };
+export type { ClassificationResult };
 
 const engine = new ClassificationEngine();
 

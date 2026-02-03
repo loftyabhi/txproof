@@ -93,6 +93,18 @@ CREATE TABLE IF NOT EXISTS supported_tokens (
 -- 3. SAAS CORE (Identity & Monetization)
 -- -----------------------------------------------------------------------------
 
+-- 3.0 AUTH NONCES (Replay Protection)
+CREATE TABLE IF NOT EXISTS auth_nonces (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    wallet_address VARCHAR(42) NOT NULL,
+    nonce VARCHAR(255) NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_nonces_wallet ON auth_nonces(wallet_address);
+
 -- 3.1 PLANS & TIERS
 CREATE TABLE IF NOT EXISTS plans (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -102,21 +114,27 @@ CREATE TABLE IF NOT EXISTS plans (
     monthly_quota INT DEFAULT 100,
     priority_level INT DEFAULT 0, -- 0=Low, 10=Medium, 20=High
     support_priority TEXT DEFAULT 'standard',
+    allows_webhooks BOOLEAN DEFAULT FALSE,
+    allows_branding BOOLEAN DEFAULT FALSE,
+    allows_bulk BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Seed Default Plans
-INSERT INTO plans (name, rate_limit_rps, max_burst, monthly_quota, priority_level)
+INSERT INTO plans (name, rate_limit_rps, max_burst, monthly_quota, priority_level, allows_webhooks, allows_branding, allows_bulk)
 VALUES 
-    ('Free', 1, 5, 100, 0),
-    ('Pro', 10, 50, 10000, 10),
-    ('Enterprise', 50, 200, 1000000, 20)
+    ('Free', 1, 5, 100, 0, FALSE, FALSE, FALSE),
+    ('Pro', 10, 50, 10000, 10, TRUE, FALSE, FALSE),
+    ('Enterprise', 50, 200, 1000000, 20, TRUE, TRUE, TRUE)
 ON CONFLICT (name) DO UPDATE 
 SET 
     max_burst = EXCLUDED.max_burst,
     monthly_quota = EXCLUDED.monthly_quota,
     rate_limit_rps = EXCLUDED.rate_limit_rps,
-    priority_level = EXCLUDED.priority_level;
+    priority_level = EXCLUDED.priority_level,
+    allows_webhooks = EXCLUDED.allows_webhooks,
+    allows_branding = EXCLUDED.allows_branding,
+    allows_bulk = EXCLUDED.allows_bulk;
 
 -- 3.2 API KEYS
 CREATE TABLE IF NOT EXISTS api_keys (
@@ -124,10 +142,13 @@ CREATE TABLE IF NOT EXISTS api_keys (
     key_hash TEXT NOT NULL UNIQUE, -- SHA-256
     prefix TEXT NOT NULL,          -- sk_live_...
     name TEXT,
-    owner_id TEXT,                 -- Supabase User ID or Wallet Address
+    owner_id TEXT,                 -- Wallet Address (Legacy)
+    owner_user_id UUID,            -- Link to Users.id (Modern)
     plan_id UUID REFERENCES plans(id),
     plan_tier TEXT DEFAULT 'Free',
     quota_limit INT DEFAULT 100,
+    overage_count INT DEFAULT 0,
+    last_overage_at TIMESTAMPTZ,
     environment TEXT DEFAULT 'live',
     is_active BOOLEAN DEFAULT TRUE,
     permissions TEXT[] DEFAULT '{}',
@@ -138,20 +159,46 @@ CREATE TABLE IF NOT EXISTS api_keys (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Late constraints set if needed via migrations, but canonical should have FKey
+-- ALTER TABLE api_keys ADD CONSTRAINT fk_owner_user FOREIGN KEY (owner_user_id) REFERENCES users(id);
+
 CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
 CREATE INDEX IF NOT EXISTS idx_api_keys_owner ON api_keys(owner_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_owner_user ON api_keys(owner_user_id);
 
 -- -----------------------------------------------------------------------------
 -- 4. BUSINESS DATA (Users & Records)
 -- -----------------------------------------------------------------------------
 
--- 4.1 USERS (Wallet-based Profiles)
+-- 4.1 USERS (Modern Enterprise Profiles)
 CREATE TABLE IF NOT EXISTS users (
-    wallet_address VARCHAR(42) PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    wallet_address VARCHAR(42) NOT NULL UNIQUE,
+    name TEXT,
+    email TEXT,
+    is_email_verified BOOLEAN DEFAULT FALSE,
+    social_config JSONB DEFAULT '{}'::jsonb,
     bills_generated INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+-- 4.2 EMAIL VERIFICATION TOKENS
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    last_requested_at TIMESTAMPTZ DEFAULT NOW(),
+    used_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_verification_token_hash ON email_verification_tokens (token_hash);
+CREATE INDEX IF NOT EXISTS idx_email_verification_user ON email_verification_tokens(user_id);
+COMMENT ON COLUMN email_verification_tokens.token_hash IS 'SHA256 hash of the verification token';
 
 -- 4.2 CONTRIBUTORS (Public Good Support)
 CREATE TABLE IF NOT EXISTS contributors (
@@ -381,6 +428,8 @@ ALTER TABLE ad_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE contributors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE contributor_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE supported_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE auth_nonces ENABLE ROW LEVEL SECURITY;
+ALTER TABLE email_verification_tokens ENABLE ROW LEVEL SECURITY;
 
 -- 7.1 Public Read Policies
 CREATE POLICY "Public Read Plans" ON plans FOR SELECT USING (TRUE);
@@ -392,11 +441,15 @@ CREATE POLICY "Public Read Tokens" ON supported_tokens FOR SELECT USING (is_acti
 -- 7.2 Authenticated User Policies
 CREATE POLICY "Users view own keys" ON api_keys 
     FOR SELECT TO authenticated 
-    USING (owner_id = auth.uid()::TEXT);
+    USING (owner_id = auth.uid()::TEXT OR owner_user_id::text = auth.uid()::text);
 
 CREATE POLICY "Users view own bills" ON bills 
     FOR SELECT TO authenticated 
     USING (user_address = auth.uid()::TEXT OR user_id = auth.uid());
+
+CREATE POLICY "Users read own profile" ON users
+    FOR SELECT TO authenticated
+    USING (wallet_address = auth.uid()::text OR id::text = auth.uid()::text);
 
 -- 7.3 Service Role (Backend) & Direct Connection Policies
 -- These policies allow BOTH Supabase Service Role (JWT) and Direct Postgres Connections (Service Role User)
@@ -431,6 +484,12 @@ CREATE POLICY "Service manages users" ON users FOR ALL
     USING (auth.role() = 'service_role' OR current_user = 'postgres' OR current_user = 'postgres.avklfjqhpizielvnkwyh');
 
 CREATE POLICY "Service manages contributors" ON contributors FOR ALL 
+    USING (auth.role() = 'service_role' OR current_user = 'postgres' OR current_user = 'postgres.avklfjqhpizielvnkwyh');
+
+CREATE POLICY "Service manages nonces" ON auth_nonces FOR ALL 
+    USING (auth.role() = 'service_role' OR current_user = 'postgres' OR current_user = 'postgres.avklfjqhpizielvnkwyh');
+
+CREATE POLICY "Service manages verification_tokens" ON email_verification_tokens FOR ALL 
     USING (auth.role() = 'service_role' OR current_user = 'postgres' OR current_user = 'postgres.avklfjqhpizielvnkwyh');
 
 -- 7.4 EXPLICIT GRANTS (Ensures permission denied errors are resolved)

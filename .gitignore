@@ -76,5 +76,8 @@ apps/api/data/*.json
 tmp/
 temp/
 
+# --- Database Scripts (ad-hoc) ---
+packages/database/scripts/*.js
+
 # --- Puppeteer ---
 .cache/

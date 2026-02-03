@@ -5,6 +5,7 @@ export const docsConfig = {
             items: [
                 { title: "Introduction", href: "/" },
                 { title: "Quick Start", href: "/quick-start" },
+                { title: "Developer Console", href: "/developer-console" },
                 { title: "Authentication", href: "/authentication" },
             ],
         },

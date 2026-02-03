@@ -1,13 +1,18 @@
 import nodemailer from 'nodemailer';
+import fs from 'fs';
+import path from 'path';
 import { logger } from '../lib/logger';
 
+export interface IEmailOptions {
+    from: string;
+    to: string;
+    subject: string;
+    html: string;
+    text?: string;
+}
+
 export interface IEmailProvider {
-    send(mailOptions: {
-        from: string;
-        to: string;
-        subject: string;
-        html: string;
-    }): Promise<void>;
+    send(mailOptions: IEmailOptions): Promise<void>;
 }
 
 export class NodemailerProvider implements IEmailProvider {
@@ -15,7 +20,7 @@ export class NodemailerProvider implements IEmailProvider {
 
     constructor() {
         this.transporter = nodemailer.createTransport({
-            service: 'gmail', // Fallback for now, but provider setup is now abstract
+            service: 'gmail',
             auth: {
                 user: process.env.GMAIL_USER,
                 pass: process.env.GMAIL_PASS
@@ -23,7 +28,7 @@ export class NodemailerProvider implements IEmailProvider {
         });
     }
 
-    async send(mailOptions: any) {
+    async send(mailOptions: IEmailOptions) {
         await this.transporter.sendMail(mailOptions);
     }
 }
@@ -31,27 +36,54 @@ export class NodemailerProvider implements IEmailProvider {
 export class EmailService {
     constructor(private provider: IEmailProvider = new NodemailerProvider()) { }
 
+    private renderTemplate(templateName: string, data: Record<string, string>): { html: string; text: string } {
+        const templatesDir = path.join(__dirname, 'email/templates');
+
+        // Base paths
+        const baseHtmlPath = path.join(templatesDir, 'base.html');
+        const contentHtmlPath = path.join(templatesDir, `${templateName}.html`);
+        const contentTextPath = path.join(templatesDir, `${templateName}.txt`);
+
+        // Load files
+        const baseHtml = fs.readFileSync(baseHtmlPath, 'utf-8');
+        const contentHtmlSource = fs.readFileSync(contentHtmlPath, 'utf-8');
+        const contentTextSource = fs.readFileSync(contentTextPath, 'utf-8');
+
+        // Inject content into base
+        let html = baseHtml.replace('{{content}}', contentHtmlSource);
+        let text = contentTextSource;
+
+        // Populate variables
+        const allData = {
+            ...data,
+            year: new Date().getFullYear().toString()
+        };
+
+        for (const [key, value] of Object.entries(allData)) {
+            const regex = new RegExp(`{{${key}}}`, 'g');
+            html = html.replace(regex, value);
+            text = text.replace(regex, value);
+        }
+
+        return { html, text };
+    }
+
     async sendVerificationEmail(email: string, token: string) {
         const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://txproof.xyz'}/verify?token=${token}`;
         const expiryMinutes = 15;
 
-        const mailOptions = {
+        const { html, text } = this.renderTemplate('verification', {
+            subject: 'Verify Your Email - TxProof Developers',
+            verifyUrl: verificationUrl,
+            expiryMinutes: expiryMinutes.toString()
+        });
+
+        const mailOptions: IEmailOptions = {
             from: `"TxProof Support" <${process.env.GMAIL_USER}>`,
             to: email,
             subject: 'Verify Your Email - TxProof Developers',
-            html: `
-                <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-                    <h2 style="color: #333;">Email Verification</h2>
-                    <p>Hello,</p>
-                    <p>Thank you for signing up for the TxProof Developer Console. Please click the button below to verify your email address. This link is valid for <b>${expiryMinutes} minutes</b>.</p>
-                    <div style="text-align: center; margin: 30px 0;">
-                        <a href="${verificationUrl}" style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Verify Email Address</a>
-                    </div>
-                    <p style="color: #666; font-size: 14px;">If you did not request this, please ignore this email.</p>
-                    <hr style="border: none; border-top: 1px solid #eee; margin-top: 30px;" />
-                    <p style="color: #999; font-size: 12px;">© ${new Date().getFullYear()} TxProof Protocol. All rights reserved.</p>
-                </div>
-            `
+            html,
+            text
         };
 
         try {

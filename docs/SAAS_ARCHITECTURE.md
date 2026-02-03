@@ -5,14 +5,16 @@ This document details the Enterprise SaaS API layer implemented for TxProof.
 ## 1. Core Components
 
 ### Database Schema
-*   **`plans`**: Centralizes quota, rate-limit, and priority definitions.
-*   **`api_keys`**: Stores **hashed** keys (`key_hash`). Includes `ip_allowlist` and `abuse_flag` for security.
+*   **`plans`**: Centralizes quota, rate-limit, and priority definitions. Now includes feature flags for **Webhooks**, **Custom Branding**, and **Bulk Actions**.
+*   **`users`**: Upgraded to **UUID** primary keys with full profile support (`name`, `email`, `social_config`).
+*   **`api_keys`**: Stores **hashed** keys (`key_hash`). Now links to users via `owner_user_id`. Includes `ip_allowlist` and `abuse_flag`.
+*   **`email_verification_tokens`**: Managed secure tokens for enterprise identity verification (SHA-256 hashed).
+*   **`auth_nonces`**: Implements replay protection for Wallet-based (SIWE) authentication.
 *   **`api_usage_aggregates`**: Optimized for quota enforcement (Atomic Counting).
-*   **`audit_logs`**: Immutable ledger of all sensitive admin actions (Key Gen, Plan Changes).
-*   **`api_usage`**: Granular request logging for Analytics.
-*   **Migrations**:
-    *   `scripts/setup_saas_db.sql`: Base SaaS tables.
-    *   `scripts/update_hardening.sql`: Enterprise Audit, Security & Metrics views.
+*   **`audit_logs`**: Immutable ledger of all sensitive actions, including **Email Verification** events.
+
+### Migrations
+*   **`master_schema.sql`**: The canonical single source of truth for the entire platform.
 
 ### Authentication & Security (`saasAuth.ts`, `publicRateLimiter.ts`)
 *   **Strict Authorization Integration**:

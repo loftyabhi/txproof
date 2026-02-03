@@ -48,7 +48,7 @@ export default function ContactUsClient() {
                                 <div>
                                     <p className="text-sm text-zinc-500 mb-1">Email us at</p>
                                     <p className="font-semibold text-white text-lg tracking-wide hover:text-violet-400 transition-colors cursor-pointer">
-                                        sarkaritoolmail@gmail.com
+                                        txproof.xyz@gmail.com
                                     </p>
                                 </div>
                             </div>

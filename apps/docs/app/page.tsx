@@ -14,13 +14,20 @@ export default function Introduction() {
         </p>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid md:grid-cols-3 gap-4">
         <Link href="/quick-start" className="p-6 border border-border rounded-lg hover:border-primary/50 transition-colors group bg-card">
           <h3 className="font-semibold text-lg mb-2 flex items-center">
             Quick Start
             <ArrowRight className="ml-2 w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
           </h3>
           <p className="text-muted-foreground text-sm">Get up and running with your first receipt generation in minutes.</p>
+        </Link>
+        <Link href="/developer-console" className="p-6 border border-border rounded-lg hover:border-primary/50 transition-colors group bg-card border-primary/20 bg-primary/5">
+          <h3 className="font-semibold text-lg mb-2 flex items-center">
+            Developer Console
+            <ArrowRight className="ml-2 w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+          </h3>
+          <p className="text-muted-foreground text-sm">Manage your account, verify your email, and issue API keys.</p>
         </Link>
         <Link href="/reference" className="p-6 border border-border rounded-lg hover:border-primary/50 transition-colors group bg-card">
           <h3 className="font-semibold text-lg mb-2 flex items-center">

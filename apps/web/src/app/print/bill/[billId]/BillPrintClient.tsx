@@ -569,7 +569,7 @@ export default function BillPrintClient() {
                                             <div dangerouslySetInnerHTML={{ __html: data.adContent }} />
                                         ) : (
                                             <div style={{ color: 'var(--color-text-secondary)', fontSize: '11px', padding: '12px', border: '1px dashed var(--color-border)', borderRadius: '8px', textAlign: 'center' }}>
-                                                <strong>Promote your project here.</strong> Contact <a href="mailto:sarkaritoolmail@gmail.com" style={{ color: 'inherit', textDecoration: 'underline' }}>sarkaritoolmail@gmail.com</a>
+                                                <strong>Promote your project here.</strong> Contact <a href="mailto:txproof.xyz@gmail.com" style={{ color: 'inherit', textDecoration: 'underline' }}>txproof.xyz@gmail.com</a>
                                             </div>
                                         )}
                                     </div>

@@ -1,0 +1,18 @@
+Verify your email to activate your TxProof account
+
+Hi there,
+
+You're one step away from using TxProof to generate verifiable blockchain receipts and production-ready transaction proofs.
+
+Confirm your email address to activate your developer account and start issuing cryptographically secure receipts.
+
+Activate My Account: {{verifyUrl}}
+
+For security, this link expires in {{expiryMinutes}} minutes.
+
+If the button doesn’t work, copy and open this link in your browser:
+{{verifyUrl}}
+
+---
+© {{year}} TxProof Protocol. All rights reserved.
+Support: https://txproof.xyz/support

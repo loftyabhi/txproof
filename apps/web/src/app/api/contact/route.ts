@@ -65,7 +65,7 @@ export async function POST(req: Request) {
 
         // 4. Send Email
         await sendEmail({
-            to: 'sarkaritoolmail@gmail.com',
+            to: 'txproof.xyz@gmail.com',
             replyTo: email,
             subject: `Contact Form: ${safeSubject}`,
             text: `

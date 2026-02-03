@@ -7,8 +7,11 @@ export { TransactionClassifierService as TransactionClassifier } from '../Transa
 // Public Types & Enums
 export {
     TransactionType,
-    TransactionEnvelopeType, // Added
-    ExecutionType,
+    TransactionEnvelopeType,
+    ExecutionType
+} from './core/types';
+
+export type {
     ConfidenceScore,
     ConfidenceBreakdown,
     ClassificationResult,
@@ -19,6 +22,6 @@ export {
 } from './core/types';
 
 // Export AA Details helper interface if public
-export { AADetails } from './resolvers/AccountAbstractionResolver';
+export type { AADetails } from './resolvers/AccountAbstractionResolver';
 
 // Do NOT export internal Engine, Rules, or Context.
