@@ -1,50 +1,100 @@
-export default function RateLimits() {
+export default function Quotas() {
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
             <div className="space-y-4">
-                <h1 className="text-4xl font-bold tracking-tight">Rate Limits</h1>
-                <p className="text-lg text-muted-foreground">
-                    Fair use policies and API limits to ensure stability for all users.
+                <h1 className="text-4xl font-bold tracking-tight">Quotas & Plans</h1>
+                <p className="text-lg text-muted-foreground leading-relaxed">
+                    TxProof enforces limits to ensure fair usage and stability. Limits apply at two levels: <strong>Real-time Rate Limits (RPS)</strong> and <strong>Monthly Usage Quotas</strong>.
                 </p>
             </div>
 
             <section className="space-y-6">
-                <h2 className="text-2xl font-semibold">Limits by Plan</h2>
+                <h2 className="text-2xl font-semibold">Limit Types</h2>
                 <div className="grid md:grid-cols-2 gap-6">
                     <div className="p-6 border border-border rounded-lg bg-card">
-                        <h3 className="font-semibold text-lg mb-4 text-foreground">Public / Unauthenticated</h3>
-                        <div className="flex items-baseline gap-2 mb-2">
-                            <span className="text-4xl font-bold tracking-tight">10</span>
-                            <span className="text-sm text-muted-foreground">requests / min</span>
+                        <h3 className="font-semibold text-lg mb-2">Rate Limit (RPS)</h3>
+                        <p className="text-sm text-muted-foreground mb-4">
+                            Protects the system from bursts.
+                            <br />Enforced via Token Bucket algorithm.
+                        </p>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-2xl font-bold font-mono">50 - 100</span>
+                            <span className="text-xs text-muted-foreground uppercase">req / sec</span>
                         </div>
-                        <p className="text-sm text-muted-foreground">Good for testing and development usage.</p>
                     </div>
-                    <div className="p-6 border border-primary/20 bg-primary/5 rounded-lg">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="font-semibold text-lg text-foreground">Authenticated</h3>
-                            <span className="px-2 py-1 bg-primary text-primary-foreground text-xs rounded font-bold">PRO</span>
+                    <div className="p-6 border border-border rounded-lg bg-card">
+                        <h3 className="font-semibold text-lg mb-2">Monthly Quota</h3>
+                        <p className="text-sm text-muted-foreground mb-4">
+                            Total requests allowed per billing cycle.
+                            <br />Based on your subscription plan.
+                        </p>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-2xl font-bold font-mono">1k - 100k+</span>
+                            <span className="text-xs text-muted-foreground uppercase">req / month</span>
                         </div>
-                        <div className="flex items-baseline gap-2 mb-2">
-                            <span className="text-4xl font-bold tracking-tight text-primary">1,000</span>
-                            <span className="text-sm text-muted-foreground">requests / min</span>
-                        </div>
-                        <p className="text-sm text-foreground/80">Standard limits for production API keys. Custom limits available.</p>
                     </div>
                 </div>
             </section>
 
-            <section className="space-y-4">
-                <h2 className="text-2xl font-semibold">Handling Rate Limits</h2>
+            <section className="space-y-6 pt-6">
+                <h2 className="text-2xl font-semibold">Response Headers</h2>
                 <p className="text-muted-foreground">
-                    If you exceed the rate limit, the API will return a <code className="text-red-600 bg-red-50 dark:bg-red-900/20 px-1 py-0.5 rounded">429 Too Many Requests</code> response.
+                    Every API response includes headers indicating your current quota status.
                 </p>
-                <div className="p-4 border border-border rounded bg-muted/20 text-sm">
-                    <strong className="block mb-2 text-foreground">Recommendation: Exponential Backoff</strong>
-                    <p className="text-muted-foreground">
-                        When you receive a 429, pause your requests for 1 second, then retry.
-                        If it fails again, pause for 2 seconds, then 4 seconds, etc.
-                        Check the <code>Retry-After</code> header for precise wait times.
-                    </p>
+                <div className="border border-border rounded-lg overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-muted text-muted-foreground font-medium border-b border-border">
+                            <tr>
+                                <th className="px-4 py-3">Header</th>
+                                <th className="px-4 py-3">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                            <tr className="bg-card">
+                                <td className="px-4 py-3 font-mono text-primary">X-Quota-Limit</td>
+                                <td className="px-4 py-3 text-muted-foreground">Total monthly request limit for your plan.</td>
+                            </tr>
+                            <tr className="bg-card">
+                                <td className="px-4 py-3 font-mono text-primary">X-Quota-Used</td>
+                                <td className="px-4 py-3 text-muted-foreground">Requests consumed in the current period.</td>
+                            </tr>
+                            <tr className="bg-card">
+                                <td className="px-4 py-3 font-mono text-primary">X-Quota-Remaining</td>
+                                <td className="px-4 py-3 text-muted-foreground">Requests remaining before overage/blocking.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section className="space-y-6 pt-6">
+                <h2 className="text-2xl font-semibold">Error Codes</h2>
+                <div className="space-y-4">
+                    <div className="p-4 border border-red-200 bg-red-50 dark:bg-red-900/10 rounded-lg">
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded text-xs font-bold font-mono">429</span>
+                            <h4 className="font-semibold text-red-900 dark:text-red-300">Rate Limit Exceeded</h4>
+                        </div>
+                        <p className="text-sm text-red-800 dark:text-red-400 mb-2">
+                            You are sending requests too fast (RPS limit hit).
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            <strong>Action:</strong> Implement exponential backoff. Wait 1-2 seconds before retrying.
+                        </p>
+                    </div>
+
+                    <div className="p-4 border border-orange-200 bg-orange-50 dark:bg-orange-900/10 rounded-lg">
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="px-2 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 rounded text-xs font-bold font-mono">402</span>
+                            <h4 className="font-semibold text-orange-900 dark:text-orange-300">Payment Required (Quota Exceeded)</h4>
+                        </div>
+                        <p className="text-sm text-orange-800 dark:text-orange-400 mb-2">
+                            You have used all requests in your monthly quota.
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            <strong>Action:</strong> Upgrade your plan in the dashboard to increase limits.
+                        </p>
+                    </div>
                 </div>
             </section>
         </div>

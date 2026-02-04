@@ -7,47 +7,80 @@ export default function Authentication() {
             <div className="space-y-4">
                 <h1 className="text-4xl font-bold tracking-tight">Authentication</h1>
                 <p className="text-lg text-muted-foreground leading-relaxed">
-                    TxProof supports two distinct authentication methods depending on your integration needs:
+                    TxProof employs a <strong>Hybrid Authentication Model</strong> to secure the API while allowing flexibility for different use cases.
                 </p>
             </div>
 
             <div className="grid md:grid-cols-2 gap-6">
                 <section className="p-6 border border-border rounded-xl bg-card space-y-3">
-                    <h3 className="font-semibold text-xl">API Keys</h3>
-                    <p className="text-sm text-muted-foreground">Used for <strong>Machine-to-Machine</strong> communication and programmatic receipt generation via our REST API.</p>
-                    <Link href="#passing-api-key" className="text-sm text-primary hover:underline">View implementation &rarr;</Link>
+                    <h3 className="font-semibold text-xl">API Keys (Machine)</h3>
+                    <p className="text-sm text-muted-foreground">
+                        Standard method for backend integrations. Long-lived, revokable keys with specific permissions and quotas.
+                    </p>
+                    <div className="flex gap-2 text-xs font-mono">
+                        <span className="bg-muted px-2 py-1 rounded">X-API-Key</span>
+                        <span className="bg-muted px-2 py-1 rounded">Bearer sk_...</span>
+                    </div>
                 </section>
                 <section className="p-6 border border-border rounded-xl bg-card space-y-3">
-                    <h3 className="font-semibold text-xl">Wallet Login (SIWE)</h3>
-                    <p className="text-sm text-muted-foreground">Used for <strong>Human-to-Machine</strong> interactions via the <Link href="/developer-console" className="text-primary hover:underline">Developer Console</Link>.</p>
-                    <Link href="/developer-console" className="text-sm text-primary hover:underline">Learn about SIWE &rarr;</Link>
+                    <h3 className="font-semibold text-xl">User JWT (Dashboard)</h3>
+                    <p className="text-sm text-muted-foreground">
+                        Short-lived tokens for frontend/dashboard access. Generated via SIWE (Sign-In with Ethereum).
+                    </p>
+                    <div className="flex gap-2 text-xs font-mono">
+                        <span className="bg-muted px-2 py-1 rounded">Bearer eyJ...</span>
+                    </div>
                 </section>
             </div>
 
-            <section id="passing-api-key" className="space-y-4 pt-8">
-                <h2 className="text-2xl font-semibold tracking-tight">Programmatic Access (API Keys)</h2>
+            <section id="api-keys" className="space-y-6 pt-8">
+                <h2 className="text-2xl font-semibold tracking-tight">Using API Keys</h2>
                 <p className="text-muted-foreground">
-                    Include your API key in the <code className="text-sm bg-muted px-1.5 py-0.5 rounded border border-border">x-api-key</code> header of every request.
+                    API Keys are the primary way to interact with the TxProof API. You can create and manage keys in the <Link href="https://txproof.xyz/dashboard/settings" className="text-primary hover:underline">Dashboard Settings</Link>.
                 </p>
-                <div className="space-y-2">
-                    <p className="text-sm font-medium text-muted-foreground">Example Request:</p>
+
+                <div className="space-y-4">
+                    <h3 className="text-lg font-medium">Header Format</h3>
+                    <p className="text-sm text-muted-foreground">
+                        You can pass your API key in one of two ways. The <code>X-API-Key</code> header is preferred for clarity.
+                    </p>
+
+                    <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Option 1: Custom Header (Preferred)</p>
+                        <CodeBlock language="bash" code={`X-API-Key: sk_live_59...`} />
+                    </div>
+
+                    <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Option 2: Authorization Bearer (Legacy)</p>
+                        <CodeBlock language="bash" code={`Authorization: Bearer sk_live_59...`} />
+                    </div>
+                </div>
+
+                <div className="space-y-4 pt-4">
+                    <h3 className="text-lg font-medium">Example Request</h3>
                     <CodeBlock
                         language="bash"
                         code={`curl https://api.txproof.xyz/api/v1/bills/resolve \\
-  -H "x-api-key: your_sk_live_..." \\
-  -d '{ "txHash": "0x...", "chainId": 8453 }'`}
+  -X POST \\
+  -H "X-API-Key: sk_live_59..." \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "txHash": "0x5d962...",
+    "chainId": 1
+  }'`}
                     />
                 </div>
             </section>
 
-            <section className="space-y-4 border-l-4 border-amber-500/50 pl-6 py-4 bg-amber-500/5 rounded-r-lg">
+            <section id="security" className="space-y-4 border-l-4 border-amber-500/50 pl-6 py-4 bg-amber-500/5 rounded-r-lg">
                 <h3 className="font-semibold text-amber-700 dark:text-amber-500 flex items-center gap-2">
-                    Security Best Practices
+                    Security Rules
                 </h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">
-                    API keys carry significant privileges. **Never** expose them in client-side code, public repositories (like GitHub), or unencrypted logging systems.
-                    If a key is compromised, revoke it immediately in the <a href="https://txproof.xyz/developers" className="text-primary hover:underline" target="_blank">Developer Console</a>.
-                </p>
+                <ul className="list-disc pl-4 text-sm text-muted-foreground space-y-2">
+                    <li><strong>Secret Keys:</strong> Keys starting with <code>sk_</code> are secret. Never expose them in client-side code (browsers, mobile apps).</li>
+                    <li><strong>Rotation:</strong> If a key is compromised, immediately revoke it in the dashboard and generate a new one.</li>
+                    <li><strong>Permissions:</strong> Provide only necessary scopes when creating keys (e.g. Read-Only for monitoring).</li>
+                </ul>
             </section>
         </div>
     )

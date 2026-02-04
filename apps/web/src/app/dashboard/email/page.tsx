@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import DeliveryMonitor from '../../components/email/DeliveryMonitor';
-import TemplateManager from '../../components/email/TemplateManager';
-import CampaignSender from '../../components/email/CampaignSender';
+import DeliveryMonitor from '../../../components/email/DeliveryMonitor';
+import TemplateManager from '../../../components/email/TemplateManager';
+import CampaignSender from '../../../components/email/CampaignSender';
 
 export default function EmailOpsPage() {
     const [tab, setTab] = useState<'monitor' | 'campaign' | 'templates'>('monitor');

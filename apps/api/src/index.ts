@@ -41,8 +41,10 @@ const allowedOrigins = [
     'https://txproof.xyz',
     'https://www.txproof.xyz',
     'https://api.txproof.xyz', // Playground
+    'https://docs.txproof.xyz', // Docs Production
     'http://localhost:3000',
-    'http://localhost:3001'
+    'http://localhost:3001',
+    'http://localhost:3002' // Docs Local
 ];
 
 app.use(cors({

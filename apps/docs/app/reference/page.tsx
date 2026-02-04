@@ -8,173 +8,176 @@ export default function Reference() {
             <div className="space-y-4">
                 <h1 className="text-4xl font-bold tracking-tight">API Reference</h1>
                 <p className="text-lg text-muted-foreground">
-                    Complete reference for the TxProof API endpoints.
+                    Complete reference for the TxProof API methods.
                     <br />Base URL: <code className="bg-muted px-2 py-1 rounded text-sm text-foreground">https://api.txproof.xyz</code>
                 </p>
+                <div className="flex gap-2 text-sm">
+                    <div className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded">Live v1</div>
+                </div>
             </div>
 
-            {/* POST /bills/resolve */}
-            <Endpoint method="POST" path="/api/v1/bills/resolve">
-                <div className="space-y-6">
-                    <p className="text-muted-foreground leading-relaxed">
-                        Starts a background job to generate a receipt for a specific transaction.
-                        This is an idempotent operation; requesting the same txHash multiple times returns the same job/receipt.
-                    </p>
+            {/* --- RECEIPT GENERATION --- */}
+            <div className="space-y-6">
+                <h2 className="text-2xl font-bold border-b pb-2">Receipt Generation</h2>
 
-                    <div>
-                        <h4 className="font-semibold text-sm uppercase text-foreground/70 mb-4 tracking-wider">Request Body</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 border-t border-border pt-4">
-                            <div className="md:col-span-1 font-mono text-sm text-primary font-semibold">txHash <span className="text-red-500">*</span></div>
-                            <div className="md:col-span-1 text-sm text-muted-foreground font-mono">string</div>
-                            <div className="md:col-span-2 text-sm text-muted-foreground">
-                                The transaction hash to resolve.
-                            </div>
+                {/* POST /bills/resolve */}
+                <Endpoint method="POST" path="/api/v1/bills/resolve">
+                    <div className="space-y-6">
+                        <p className="text-muted-foreground leading-relaxed">
+                            Starts a background job to generate a receipt for a specific blockchain transaction.
+                            This is an idempotent operation.
+                        </p>
 
-                            <div className="md:col-span-1 font-mono text-sm text-primary font-semibold">chainId <span className="text-red-500">*</span></div>
-                            <div className="md:col-span-1 text-sm text-muted-foreground font-mono">number</div>
-                            <div className="md:col-span-2 text-sm text-muted-foreground">
-                                The chain ID (e.g. 1 for Ethereum, 137 for Polygon).
+                        <div>
+                            <h4 className="font-semibold text-sm uppercase text-foreground/70 mb-4 tracking-wider">Request Body</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 border-t border-border pt-4">
+                                <div className="md:col-span-1 font-mono text-sm text-primary font-semibold">txHash <span className="text-red-500">*</span></div>
+                                <div className="md:col-span-1 text-sm text-muted-foreground font-mono">string</div>
+                                <div className="md:col-span-2 text-sm text-muted-foreground">
+                                    The transaction hash (0x...).
+                                </div>
+
+                                <div className="md:col-span-1 font-mono text-sm text-primary font-semibold">chainId <span className="text-red-500">*</span></div>
+                                <div className="md:col-span-1 text-sm text-muted-foreground font-mono">number</div>
+                                <div className="md:col-span-2 text-sm text-muted-foreground">
+                                    The EVM chain ID (e.g. 1, 137, 8453).
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div>
-                        <h4 className="font-semibold text-sm uppercase text-foreground/70 mb-3 tracking-wider">Example Request</h4>
-                        <CodeBlock language="json" code={`{
-  "txHash": "0x5d962...",
-  "chainId": 1
-}`} />
+                        <div>
+                            <h4 className="font-semibold text-sm uppercase text-foreground/70 mb-3 tracking-wider">Example</h4>
+                            <CodeBlock language="bash" code={`curl -X POST https://api.txproof.xyz/api/v1/bills/resolve \\
+  -H "X-API-Key: sk_live_..." \\
+  -H "Content-Type: application/json" \\
+  -d '{ "txHash": "0x5d962...", "chainId": 1 }'`} />
+                        </div>
                     </div>
+                </Endpoint>
 
-                    <div>
-                        <h4 className="font-semibold text-sm uppercase text-foreground/70 mb-3 tracking-wider">Response Scenarios</h4>
+                {/* GET /bills/job/:jobId */}
+                <Endpoint method="GET" path="/api/v1/bills/job/:jobId">
+                    <div className="space-y-6">
+                        <p className="text-muted-foreground leading-relaxed">
+                            Poll status of a generation job.
+                        </p>
                         <Tabs items={[
                             {
-                                label: '201 Created',
-                                value: '201',
+                                label: 'Response (Success)',
+                                value: '200',
                                 content: <CodeBlock language="json" code={`{
-  "jobId": "job_987654",
-  "status": "pending",
-  "createdAt": "2024-03-20T10:00:00Z"
+  "id": "job_123",
+  "state": "completed",
+  "data": { "billId": "bill-1-0x123..." },
+  "pdfUrl": "https://storage.txproof.xyz/..."
 }`} />
                             },
                             {
-                                label: '400 Bad Request',
-                                value: '400',
+                                label: 'Response (Pending)',
+                                value: 'pending',
                                 content: <CodeBlock language="json" code={`{
-  "error": "Invalid transaction hash format",
-  "code": "INVALID_HASH"
+  "id": "job_123",
+  "state": "processing",
+  "queuePosition": 2
 }`} />
                             }
                         ]} />
                     </div>
-                </div>
-            </Endpoint>
+                </Endpoint>
+            </div>
 
-            {/* GET /bills/job/:jobId */}
-            <Endpoint method="GET" path="/api/v1/bills/job/:jobId">
-                <div className="space-y-6">
-                    <p className="text-muted-foreground leading-relaxed">
-                        Checks the status of a specific job. Use this endpoint for polling until the status is <span className="font-mono text-xs">completed</span> or <span className="font-mono text-xs">failed</span>.
-                    </p>
+            {/* --- WEBHOOKS --- */}
+            <div className="space-y-6 pt-12">
+                <h2 className="text-2xl font-bold border-b pb-2">Webhooks</h2>
 
-                    <div>
-                        <h4 className="font-semibold text-sm uppercase text-foreground/70 mb-4 tracking-wider">Path Parameters</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 border-t border-border pt-4">
-                            <div className="md:col-span-1 font-mono text-sm text-primary font-semibold">jobId <span className="text-red-500">*</span></div>
-                            <div className="md:col-span-1 text-sm text-muted-foreground font-mono">string</div>
-                            <div className="md:col-span-2 text-sm text-muted-foreground">
-                                The ID of the job returned by the resolve endpoint.
-                            </div>
-                        </div>
-                    </div>
+                {/* POST /webhooks */}
+                <Endpoint method="POST" path="/api/v1/webhooks">
+                    <div className="space-y-6">
+                        <p className="text-muted-foreground leading-relaxed">
+                            Register a new webhook endpoint to receive real-time events.
+                            <br /><strong>Note:</strong> Returns the signing secret only once.
+                        </p>
 
-                    <div>
-                        <h4 className="font-semibold text-sm uppercase text-foreground/70 mb-3 tracking-wider">Response Scenarios</h4>
                         <Tabs items={[
                             {
-                                label: 'Completed',
-                                value: 'completed',
-                                content: <div className="space-y-2">
-                                    <p className="text-sm text-muted-foreground">Job finished successfully.</p>
-                                    <CodeBlock language="json" code={`{
-  "jobId": "job_987654",
-  "status": "completed",
-  "data": {
-     "pdfUrl": "https://cdn.txproof.xyz/receipts/r_123.pdf",
-     "bill": {
-        "amount": "100.00",
-        "currency": "USDC",
-        "sender": "0x...",
-        "receiver": "0x..."
-     }
-  }
+                                label: 'Request',
+                                value: 'req',
+                                content: <CodeBlock language="json" code={`{
+  "url": "https://your-api.com/webhooks/txproof",
+  "events": ["bill.created", "bill.failed"]
 }`} />
-                                </div>
                             },
                             {
-                                label: 'Processing',
-                                value: 'processing',
-                                content: <div className="space-y-2">
-                                    <p className="text-sm text-muted-foreground">Job is still running. Retry later.</p>
-                                    <CodeBlock language="json" code={`{
-  "jobId": "job_987654",
-  "status": "processing"
+                                label: 'Response',
+                                value: 'res',
+                                content: <CodeBlock language="json" code={`{
+  "webhook": { "id": "wh_123", "url": "..." },
+  "secret": "whsec_..." 
 }`} />
-                                </div>
-                            },
-                            {
-                                label: 'Failed',
-                                value: 'failed',
-                                content: <div className="space-y-2">
-                                    <p className="text-sm text-muted-foreground">Job failed with error details.</p>
-                                    <CodeBlock language="json" code={`{
-  "jobId": "job_987654",
-  "status": "failed",
-  "error": "Transaction execution reverted",
-  "code": "TX_REVERTED"
-}`} />
-                                </div>
                             }
                         ]} />
                     </div>
-                </div>
-            </Endpoint>
+                </Endpoint>
 
-            {/* GET /bills/:billId/data */}
-            <Endpoint method="GET" path="/api/v1/bills/:billId/data">
-                <div className="space-y-6">
-                    <p className="text-muted-foreground leading-relaxed">
-                        Retrieves the raw JSON data for a generated receipt (bill) using the Bill ID.
-                        This is useful if you want to store just the ID and fetch details dynamically.
-                    </p>
+                {/* GET /webhooks */}
+                <Endpoint method="GET" path="/api/v1/webhooks">
+                    <p className="text-muted-foreground">List all active webhooks.</p>
+                </Endpoint>
 
-                    <div>
-                        <h4 className="font-semibold text-sm uppercase text-foreground/70 mb-4 tracking-wider">Path Parameters</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 border-t border-border pt-4">
-                            <div className="md:col-span-1 font-mono text-sm text-primary font-semibold">billId <span className="text-red-500">*</span></div>
-                            <div className="md:col-span-1 text-sm text-muted-foreground font-mono">string</div>
-                            <div className="md:col-span-2 text-sm text-muted-foreground">
-                                The unique identifier of the generated bill/receipt.
-                            </div>
-                        </div>
+                {/* DELETE /webhooks/:id */}
+                <Endpoint method="DELETE" path="/api/v1/webhooks/:id">
+                    <p className="text-muted-foreground">Delete a webhook subscription.</p>
+                </Endpoint>
+            </div>
+
+
+            {/* --- VERIFICATION --- */}
+            <div className="space-y-6 pt-12">
+                <h2 className="text-2xl font-bold border-b pb-2">Verification</h2>
+
+                {/* POST /verify/receipt */}
+                <Endpoint method="POST" path="/api/v1/verify/receipt">
+                    <div className="space-y-6">
+                        <p className="text-muted-foreground leading-relaxed">
+                            Cryptographically verify a receipt's integrity against its stored hash.
+                        </p>
+                        <CodeBlock language="json" code={`// Response
+{
+  "valid": true,
+  "billId": "bill-1-0x...",
+  "algorithm": "keccak256",
+  "verified_at": "2024-03-20T10:00:00Z"
+}`} />
                     </div>
+                </Endpoint>
+            </div>
 
-                    <div>
-                        <h4 className="font-semibold text-sm uppercase text-foreground/70 mb-3 tracking-wider">Example Response</h4>
+            {/* --- USAGE --- */}
+            <div className="space-y-6 pt-12">
+                <h2 className="text-2xl font-bold border-b pb-2">Usage & Quotas</h2>
+
+                {/* GET /usage */}
+                <Endpoint method="GET" path="/api/v1/usage">
+                    <div className="space-y-6">
+                        <p className="text-muted-foreground leading-relaxed">
+                            Get real-time usage metrics for the authenticated API key.
+                        </p>
                         <CodeBlock language="json" code={`{
-  "id": "bill_123456",
-  "chainId": 1,
-  "txHash": "0x5d962...",
-  "timestamp": 1234567890,
-  "metadata": {
-      "items": [...],
-      "total": "100.00"
+  "plan": {
+    "name": "Professional",
+    "limit": 50000,
+    "rateLimitRps": 50
+  },
+  "usage": {
+    "total": 12450,
+    "remaining": 37550,
+    "period": { "start": "2024-03-01...", "end": "..." }
   }
 }`} />
                     </div>
-                </div>
-            </Endpoint>
+                </Endpoint>
+            </div>
+
         </div>
     )
 }
