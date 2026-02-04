@@ -30,20 +30,38 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         },
     };
 }
-
 import { Navbar } from '@/components/Navbar';
+import { constructCanonical, generateBreadcrumbSchema } from '@/lib/seo';
 
 export default async function TransactionPage({ params }: Props) {
     const { chain, txHash } = await params;
     const chainName = chain.charAt(0).toUpperCase() + chain.slice(1);
 
-    // Structured Data for SoftwareApplication/TechArticle
-    const jsonLd = { /* ... */ }; // (No changes to jsonLd logic needed, just purely demonstrating placement)
+    const breadcrumbs = [
+        { name: 'Home', item: '/' },
+        { name: chainName, item: `/tx/${chain}` },
+        { name: 'Analysis', item: `/tx/${chain}/${txHash}` },
+    ];
 
-    // ... (rest of logic)
+    // Structured Data for SoftwareApplication/TechArticle
+    const jsonLd = {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        "headline": `${chainName} Transaction Analysis`,
+        "description": `Semantic interpretation of transaction ${txHash} on ${chainName}`,
+        "author": {
+            "@type": "Organization",
+            "name": "TxProof"
+        },
+        "identifier": txHash
+    };
 
     return (
         <div className="min-h-screen bg-[#0a0a0a] text-white font-sans overflow-x-hidden selection:bg-violet-500/30">
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(generateBreadcrumbSchema(breadcrumbs)) }}
+            />
             <Navbar />
 
             <div className="pt-32 pb-20 px-6">

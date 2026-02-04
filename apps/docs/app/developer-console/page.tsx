@@ -1,9 +1,38 @@
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Badge } from "lucide-react";
+import { Metadata } from 'next';
+import { constructCanonical, generateBreadcrumbSchema, generateTechArticleSchema } from "@/lib/seo";
+
+export const metadata: Metadata = {
+    title: 'Developer Console Guide',
+    description: 'Learn how to manage your API keys, usage quotas, and account verification in the TxProof Developer Console.',
+    alternates: {
+        canonical: constructCanonical('/developer-console'),
+    },
+};
+
+const breadcrumbs = [
+    { name: "Docs", item: "/" },
+    { name: "Developer Console", item: "/developer-console" },
+];
+
+const schema = generateTechArticleSchema(
+    'Developer Console Documentation - TxProof',
+    'User guide for managing developer credentials and account settings on the TxProof platform.',
+    '/developer-console'
+);
 
 export default function DeveloperConsoleGuide() {
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(generateBreadcrumbSchema(breadcrumbs)) }}
+            />
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+            />
             <div className="space-y-4">
                 <h1 className="text-4xl font-bold tracking-tight">Developer Console</h1>
                 <p className="text-lg text-muted-foreground leading-relaxed">

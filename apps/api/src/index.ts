@@ -109,7 +109,6 @@ app.use('/api/v1/webhooks', webhooksRouter); // [NEW]
 app.use('/api/v1/templates', templatesRouter); // [NEW]
 app.use('/api/v1/usage', usageRouter); // [NEW]
 app.use('/api/v1/verify', verificationRouter); // [NEW]
-app.use('/api/v1/verify', verificationRouter); // [NEW]
 app.use('/api/v1/user', userRouter); // [NEW]
 app.use('/api/v1/email', trackingRouter); // [NEW - Elite]
 // Note: Admin router mounted below after verifyAdmin definition
@@ -124,14 +123,7 @@ const setupPublicRoutes = (app: express.Application) => {
     });
 
     // 2. Ads (Public, Rate Limited)
-    app.get('/api/v1/ads/random', publicRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
-        try {
-            const placement = (req.query.placement as 'web' | 'pdf') || 'web';
-            res.set('Cache-Control', 'no-store, max-age=0, must-revalidate');
-            res.set('Pragma', 'no-cache');
-            res.json(await adminService.getRandomAd(placement));
-        } catch (e) { next(e); }
-    });
+    // Moved below to central ad definitions
 
     // 3. Serve Generated PDFs (Public Storage Read ONLY)
     app.get('/bills/:fileName', publicRateLimiter, async (req: Request, res: Response) => {

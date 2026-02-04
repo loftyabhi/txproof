@@ -2,16 +2,26 @@ import { Metadata } from 'next';
 import { Navbar } from '@/components/Navbar';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { constructCanonical, generateBreadcrumbSchema } from '@/lib/seo';
 
 export const metadata: Metadata = {
     title: 'How Crypto Transactions Work | Technical Lifecycle',
     description: 'The complete lifecycle of a blockchain transaction: Signing, Mempool, Inclusion, and Finality. Learn what actually happens when you click send.',
+    alternates: {
+        canonical: constructCanonical('/learn/how-transactions-work'),
+    },
     openGraph: {
         title: 'Transaction Lifecycle Explained | TxProof',
         description: 'From Mempool to Block: The mechanics of value transfer.',
         type: 'article',
     },
 };
+
+const breadcrumbs = [
+    { name: 'Home', item: '/' },
+    { name: 'Learn', item: '/learn' },
+    { name: 'How Transactions Work', item: '/learn/how-transactions-work' },
+];
 
 export default function HowTransactionsWork() {
     const jsonLd = {
@@ -28,6 +38,10 @@ export default function HowTransactionsWork() {
 
     return (
         <div className="min-h-screen bg-[#0a0a0a] text-white font-sans selection:bg-violet-500/30 overflow-x-hidden">
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(generateBreadcrumbSchema(breadcrumbs)) }}
+            />
             <script
                 type="application/ld+json"
                 dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}

@@ -1,8 +1,37 @@
 import { CodeBlock } from "@/components/ui/CodeBlock";
+import { Metadata } from 'next';
+import { constructCanonical, generateBreadcrumbSchema, generateTechArticleSchema } from "@/lib/seo";
+
+export const metadata: Metadata = {
+    title: 'Error Codes',
+    description: 'Detailed guide to TxProof API error codes and HTTP status responses. Learn how to handle and troubleshoot common API issues.',
+    alternates: {
+        canonical: constructCanonical('/errors'),
+    },
+};
+
+const breadcrumbs = [
+    { name: "Docs", item: "/" },
+    { name: "Error Codes", item: "/errors" },
+];
+
+const schema = generateTechArticleSchema(
+    'TxProof API Error Codes Reference',
+    'Technical documentation for handling and resolving API errors in the TxProof ecosystem.',
+    '/errors'
+);
 
 export default function Errors() {
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(generateBreadcrumbSchema(breadcrumbs)) }}
+            />
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+            />
             <div className="space-y-4">
                 <h1 className="text-4xl font-bold tracking-tight">Error Codes</h1>
                 <p className="text-lg text-muted-foreground">

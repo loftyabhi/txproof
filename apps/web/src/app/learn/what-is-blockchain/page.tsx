@@ -2,16 +2,26 @@ import { Metadata } from 'next';
 import { Navbar } from '@/components/Navbar';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { constructCanonical, generateBreadcrumbSchema } from '@/lib/seo';
 
 export const metadata: Metadata = {
     title: 'What is a Blockchain? | Authoritative Definition',
     description: 'An expert explanation of blockchain mechanics, state machines, and consensus. Beyond the hype: understanding distributed coordination.',
+    alternates: {
+        canonical: constructCanonical('/learn/what-is-blockchain'),
+    },
     openGraph: {
         title: 'What is a Blockchain? | TxProof Learning',
         description: 'Trust, coordination, and the deterministic state machine.',
         type: 'article',
     },
 };
+
+const breadcrumbs = [
+    { name: 'Home', item: '/' },
+    { name: 'Learn', item: '/learn' },
+    { name: 'What is Blockchain?', item: '/learn/what-is-blockchain' },
+];
 
 export default function WhatIsBlockchain() {
     const jsonLd = {
@@ -28,6 +38,10 @@ export default function WhatIsBlockchain() {
 
     return (
         <div className="min-h-screen bg-[#0a0a0a] text-white font-sans selection:bg-violet-500/30 overflow-x-hidden">
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(generateBreadcrumbSchema(breadcrumbs)) }}
+            />
             <script
                 type="application/ld+json"
                 dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}

@@ -1,9 +1,38 @@
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ArrowDown } from "lucide-react";
+import { Metadata } from 'next';
+import { constructCanonical, generateBreadcrumbSchema, generateTechArticleSchema } from "@/lib/seo";
+
+export const metadata: Metadata = {
+    title: 'Status Lifecycle',
+    description: 'Understand the different states of a TxProof receipt generation job: Pending, Processing, Completed, and Failed.',
+    alternates: {
+        canonical: constructCanonical('/status-lifecycle'),
+    },
+};
+
+const breadcrumbs = [
+    { name: "Docs", item: "/" },
+    { name: "Status Lifecycle", item: "/status-lifecycle" },
+];
+
+const schema = generateTechArticleSchema(
+    'TxProof API Status Lifecycle',
+    'Comprehensive guide to the asynchronous job processing states in the TxProof engine.',
+    '/status-lifecycle'
+);
 
 export default function StatusLifecycle() {
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(generateBreadcrumbSchema(breadcrumbs)) }}
+            />
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+            />
             <div className="space-y-4">
                 <h1 className="text-4xl font-bold tracking-tight">Status Lifecycle</h1>
                 <p className="text-lg text-muted-foreground">

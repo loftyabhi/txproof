@@ -12,9 +12,30 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+import { constructCanonical } from "@/lib/seo";
+import { GoogleAnalytics } from "@/components/analytics/GoogleAnalytics";
+
 export const metadata: Metadata = {
-  title: "TxProof API Docs",
-  description: "Developer Documentation for TxProof API",
+  title: {
+    default: "TxProof API Docs | Professional Blockchain Intelligence",
+    template: "%s | TxProof API Docs"
+  },
+  description: "Detailed developer documentation for the TxProof API. Learn how to generate verifiable on-chain receipts.",
+  alternates: {
+    canonical: constructCanonical("/"),
+  },
+  openGraph: {
+    title: "TxProof API Documentation",
+    description: "The standard for verifiable on-chain receipts.",
+    url: "https://docs.txproof.xyz",
+    siteName: "TxProof",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "TxProof API Docs",
+    description: "Developer Documentation for TxProof API",
+  },
 };
 
 import { DocsLayout } from "@/components/layout/DocsLayout";
@@ -29,6 +50,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <GoogleAnalytics />
         <DocsLayout>{children}</DocsLayout>
       </body>
     </html>

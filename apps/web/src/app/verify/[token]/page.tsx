@@ -1,24 +1,26 @@
-'use client';
+import { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 
-import { useParams, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+type Props = {
+    params: Promise<{
+        token: string;
+    }>;
+};
 
-export default function VerifyPathRedirect() {
-    const params = useParams();
-    const router = useRouter();
-    const token = params.token;
+export const metadata: Metadata = {
+    title: 'Verifying Email...',
+    robots: {
+        index: false,
+        follow: false,
+    }
+};
 
-    useEffect(() => {
-        if (token) {
-            router.replace(`/verify?token=${token}`);
-        } else {
-            router.replace('/verify');
-        }
-    }, [token, router]);
+export default async function VerifyPathRedirect({ params }: Props) {
+    const { token } = await params;
 
-    return (
-        <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-        </div>
-    );
+    if (token) {
+        redirect(`/verify?token=${token}`);
+    }
+
+    redirect('/verify');
 }

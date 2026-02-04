@@ -983,7 +983,7 @@ export default function DashboardPage() {
                                                 </button>
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleOpenQuota(u); }}
-                                                    className="p-2 text-zinc-500 hover:text-white bg-white/5 rounded-lg border border-white/10 transition-all mr-2"
+                                                    className="p-2 text-zinc-500 hover:text-white bg-white/5 rounded-lg border border-white/10 opacity-0 group-hover:opacity-100 transition-all mr-2"
                                                     title="Manage Quota"
                                                 >
                                                     <Settings size={16} />
@@ -991,6 +991,7 @@ export default function DashboardPage() {
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); setDetailItem({ type: 'user', data: u }); }}
                                                     className="p-2 text-zinc-500 hover:text-white bg-white/5 rounded-lg border border-white/10 opacity-0 group-hover:opacity-100 transition-all"
+                                                    title="View Details"
                                                 >
                                                     <ArrowDownCircle size={16} />
                                                 </button>

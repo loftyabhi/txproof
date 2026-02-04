@@ -1,9 +1,38 @@
 import { CodeBlock } from "@/components/ui/CodeBlock";
 import Link from "next/link";
+import { Metadata } from 'next';
+import { constructCanonical, generateBreadcrumbSchema, generateTechArticleSchema } from "@/lib/seo";
+
+export const metadata: Metadata = {
+    title: 'Authentication',
+    description: 'Learn how to secure your TxProof API requests using API Keys and JWT tokens. Security best practices for backend integrations.',
+    alternates: {
+        canonical: constructCanonical('/authentication'),
+    },
+};
+
+const breadcrumbs = [
+    { name: "Docs", item: "/" },
+    { name: "Authentication", item: "/authentication" },
+];
+
+const schema = generateTechArticleSchema(
+    'TxProof API Authentication Guide',
+    'Technical guide on securing API communication with TxProof using hybrid authentication.',
+    '/authentication'
+);
 
 export default function Authentication() {
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(generateBreadcrumbSchema(breadcrumbs)) }}
+            />
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+            />
             <div className="space-y-4">
                 <h1 className="text-4xl font-bold tracking-tight">Authentication</h1>
                 <p className="text-lg text-muted-foreground leading-relaxed">

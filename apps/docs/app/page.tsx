@@ -2,10 +2,39 @@ import { CodeBlock } from "@/components/ui/CodeBlock";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { Metadata } from 'next';
+import { constructCanonical, generateBreadcrumbSchema, generateTechArticleSchema } from "@/lib/seo";
+
+export const metadata: Metadata = {
+  title: 'Introduction',
+  description: 'Welcome to the TxProof API docs. Learn how the TxProof engine transforms raw hex data into professional on-chain receipts.',
+  alternates: {
+    canonical: constructCanonical('/'),
+  },
+};
+
+const breadcrumbs = [
+  { name: "Docs", item: "/" },
+  { name: "Introduction", item: "/" },
+];
+
+const schema = generateTechArticleSchema(
+  'Introduction to TxProof API',
+  'Comprehensive overview of the TxProof verifiable on-chain receipt engine.',
+  '/'
+);
 
 export default function Introduction() {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(generateBreadcrumbSchema(breadcrumbs)) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      />
       <div className="space-y-4">
         <h1 className="text-4xl font-bold tracking-tight">Introduction</h1>
         <p className="text-lg text-muted-foreground leading-relaxed">

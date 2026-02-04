@@ -1,10 +1,39 @@
 import { Endpoint } from "@/components/ui/Endpoint";
 import { CodeBlock } from "@/components/ui/CodeBlock";
 import { Tabs } from "@/components/ui/Tabs";
+import { Metadata } from 'next';
+import { constructCanonical, generateBreadcrumbSchema, generateTechArticleSchema } from "@/lib/seo";
+
+export const metadata: Metadata = {
+    title: 'API Reference',
+    description: 'Complete technical reference for the TxProof API. Methods for receipt generation, webhooks, and usage monitoring.',
+    alternates: {
+        canonical: constructCanonical('/reference'),
+    },
+};
+
+const breadcrumbs = [
+    { name: "Docs", item: "/" },
+    { name: "Reference", item: "/reference" },
+];
+
+const schema = generateTechArticleSchema(
+    'TxProof API Reference',
+    'Detailed technical specification of all TxProof API endpoints and payloads.',
+    '/reference'
+);
 
 export default function Reference() {
     return (
         <div className="space-y-12 animate-in fade-in duration-500">
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(generateBreadcrumbSchema(breadcrumbs)) }}
+            />
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+            />
             <div className="space-y-4">
                 <h1 className="text-4xl font-bold tracking-tight">API Reference</h1>
                 <p className="text-lg text-muted-foreground">

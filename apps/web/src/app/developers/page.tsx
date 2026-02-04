@@ -1,242 +1,42 @@
-"use client";
-
-import React, { useEffect, useState } from 'react';
-import { useConsoleAuth } from '@/hooks/useConsoleAuth';
-import { ConsoleLogin } from '@/components/console/ConsoleLogin';
-import { KeyManager } from '@/components/console/KeyManager';
-import { OverviewStats } from '@/components/console/OverviewStats';
+import React, { Suspense } from 'react';
+import { Metadata } from 'next';
+import { DevelopersClient } from '@/components/console/DevelopersClient';
 import { DashboardLoader } from '@/components/console/DashboardLoader';
-import { useAccount } from 'wagmi';
+import { constructCanonical, generateBreadcrumbSchema } from '@/lib/seo';
 
-import { toast } from 'sonner';
-import { ProfileModal } from '@/components/console/ProfileModal';
-
-export default function ConsolePage() {
-    const { isAuthenticated, isLoading: isAuthLoading, token, logout } = useConsoleAuth();
-    const { isConnected } = useAccount(); // Wagmi state validation
-
-    // Data State
-    const [keys, setKeys] = useState<any[]>([]);
-    const [usage, setUsage] = useState<any>({ logs_count: 0 });
-    const [isLoadingData, setIsLoadingData] = useState(false);
-    const [showNewKey, setShowNewKey] = useState<string | null>(null);
-    const [userProfile, setUserProfile] = useState<any>(null);
-    const [isProfileOpen, setIsProfileOpen] = useState(false);
-
-    // Fetch Data
-    const fetchData = React.useCallback(async () => {
-        if (!token) return;
-        setIsLoadingData(true);
-        try {
-            // Parallel Fetch
-            const [keysRes, usageRes, meRes] = await Promise.all([
-                fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/user/keys`, { headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/user/usage`, { headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/user/me`, { headers: { Authorization: `Bearer ${token}` } })
-            ]);
-
-            if (keysRes.ok) setKeys(await keysRes.json());
-            if (usageRes.ok) setUsage(await usageRes.json());
-            if (meRes.ok) setUserProfile(await meRes.json());
-
-        } catch (e) {
-            console.error(e);
-            toast.error('Failed to load dashboard data');
-        } finally {
-            setIsLoadingData(false);
-        }
-    }, [token]);
-
-    useEffect(() => {
-        if (isAuthenticated) {
-            fetchData();
-        }
-    }, [isAuthenticated, fetchData]);
-
-    // Handle Create Key
-    const handleCreateKey = async (name: string) => {
-        if (!token) return;
-        try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/user/keys`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ name })
-            });
-
-            if (!res.ok) {
-                const err = await res.json();
-                throw new Error(err.error || 'Failed to create key');
-            }
-
-            const newKeyData = await res.json();
-            // Show the RAW KEY to user via a modal or alert (Simplification: Alert)
-            // Ideally: Use a Modal state `showNewKey`
-            setShowNewKey(newKeyData.key);
-            toast.success('API Key created successfully');
-
-            await fetchData(); // Refresh list
-        } catch (e: any) {
-            toast.error(e.message);
-        }
-    };
-
-    // Handle Revoke
-    const handleRevokeKey = async (id: string) => {
-        if (!confirm('Are you sure you want to revoke this key? This cannot be undone.')) return;
-        if (!token) return;
-
-        try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/user/keys/${id}/revoke`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` }
-            });
-
-            if (res.ok) {
-                toast.success('API Key revoked');
-                await fetchData();
-            } else {
-                throw new Error('Revocation failed');
-            }
-        } catch (e: any) {
-            toast.error(e.message);
-        }
-    };
-
-    // Derived State for Stats (Sum of all keys? or Plan Limit?)
-    // Assuming keys share a User Plan or individual Key Plans.
-    // Logic: Free Tier = 100 reqs/mo TOTAL? Or per key? 
-    // Schema links quotas to Keys.
-    // We display aggregate data from Usage endpoint.
-    // Assuming the user wants to see "Total Usage vs Total Quota" (if logical) 
-    // or just Usage.
-
-    // Let's use the first Active Key's quota as "Plan Limit" reference for simplicity
-    // or aggregate if we had a User-level quota.
-    const activeKey = keys.find(k => k.is_active);
-    const totalQuota = activeKey?.plan?.monthly_quota || 100; // Default fallback
-    const planName = activeKey?.plan?.name || (keys.length > 0 ? 'Revoked' : 'Free');
-
-    // --- Render ---
-
-    if (isAuthLoading) {
-        return (
-            <div className="min-h-screen bg-black text-white p-8">
-                <div className="max-w-6xl mx-auto mt-20">
-                    <DashboardLoader />
-                </div>
-            </div>
-        );
+export const metadata: Metadata = {
+    title: 'Developer Console | API Management',
+    description: 'Manage your TxProof API keys, monitor usage, and integrate semantic blockchain analysis into your application.',
+    alternates: {
+        canonical: constructCanonical('/developers'),
+    },
+    robots: {
+        index: false,
+        follow: true,
     }
+};
 
-    if (!isAuthenticated) {
-        return <ConsoleLogin />;
-    }
+const breadcrumbs = [
+    { name: 'Home', item: '/' },
+    { name: 'Developers', item: '/developers' },
+];
 
+export default function DevelopersPage() {
     return (
-        <div className="min-h-screen bg-black text-white p-4 md:p-8">
-            <div className="max-w-7xl mx-auto space-y-8">
-                {/* Header */}
-                <div className="flex justify-between items-center border-b border-white/10 pb-6">
-                    <div>
-                        <h1 className="text-3xl font-bold">Developer Console</h1>
-                        <p className="text-gray-400">Manage your seamless integration with TxProof Protocol</p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <button
-                            onClick={() => setIsProfileOpen(true)}
-                            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm transition-colors group"
-                        >
-                            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center text-xs font-bold uppercase">
-                                {userProfile?.name?.charAt(0) || 'U'}
-                            </div>
-                            <span className="text-gray-200 group-hover:text-white">
-                                {userProfile?.name || 'Profile'}
-                            </span>
-                        </button>
-                        <button
-                            onClick={logout}
-                            className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-300 transition-colors"
-                        >
-                            Sign Out
-                        </button>
+        <div className="min-h-screen bg-black">
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(generateBreadcrumbSchema(breadcrumbs)) }}
+            />
+            <Suspense fallback={
+                <div className="min-h-screen bg-black text-white p-8">
+                    <div className="max-w-6xl mx-auto mt-20">
+                        <DashboardLoader />
                     </div>
                 </div>
-
-                {/* New Key Modal (Simple Overlay) */}
-                {showNewKey && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-                        <div className="bg-[#111] border border-green-500/30 rounded-2xl p-8 max-w-md w-full shadow-2xl">
-                            <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center mb-4 mx-auto text-green-400">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-                            </div>
-                            <h2 className="text-xl font-bold text-center mb-2">API Key Created</h2>
-                            <p className="text-gray-400 text-center text-sm mb-6">
-                                Save this key now. It will never be shown again.
-                            </p>
-
-                            <div className="bg-black border border-white/10 rounded-lg p-4 mb-6 relative group">
-                                <code className="break-all text-green-400 font-mono text-sm">{showNewKey}</code>
-                                <button
-                                    onClick={() => navigator.clipboard.writeText(showNewKey)}
-                                    className="absolute right-2 top-2 p-2 bg-white/10 rounded hover:bg-white/20 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                    Copy
-                                </button>
-                            </div>
-
-                            <button
-                                onClick={() => setShowNewKey(null)}
-                                className="w-full py-3 bg-white text-black font-medium rounded-lg hover:bg-gray-200"
-                            >
-                                I have saved it
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* Overview Stats */}
-                <OverviewStats
-                    usageData={usage}
-                    totalQuota={totalQuota}
-                    billingTier={planName}
-                />
-
-                {/* Key Management */}
-                <KeyManager
-                    keys={keys}
-                    onCreate={handleCreateKey}
-                    onRevoke={handleRevokeKey}
-                    isLoading={isLoadingData}
-                />
-
-                {/* Documentation / Help */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="p-6 rounded-2xl bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/20">
-                        <h3 className="font-semibold text-blue-200 mb-2">Documentation</h3>
-                        <p className="text-sm text-gray-400 mb-4">Learn how to integrate the Receipt API into your dApp. Includes examples for React, Node, and Python.</p>
-                        <a href="/docs" className="text-sm text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1">
-                            Read Docs &rarr;
-                        </a>
-                    </div>
-                    <div className="p-6 rounded-2xl bg-gradient-to-br from-orange-900/20 to-red-900/20 border border-orange-500/20">
-                        <h3 className="font-semibold text-orange-200 mb-2">Need Enterprise Limits?</h3>
-                        <p className="text-sm text-gray-400 mb-4">Get custom rate limits, white-label PDF branding, and dedicated support.</p>
-                        <button className="text-sm text-orange-400 hover:text-orange-300 font-medium">
-                            Contact Sales
-                        </button>
-                    </div>
-                </div>
-                <ProfileModal
-                    isOpen={isProfileOpen}
-                    onClose={() => setIsProfileOpen(false)}
-                    token={token || ''}
-                    initialData={userProfile}
-                    onUpdate={fetchData}
-                />
-            </div>
+            }>
+                <DevelopersClient />
+            </Suspense>
         </div>
     );
 }

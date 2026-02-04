@@ -1,6 +1,27 @@
 import { CodeBlock } from "@/components/ui/CodeBlock";
 import { Tabs } from "@/components/ui/Tabs";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Metadata } from 'next';
+import { constructCanonical, generateBreadcrumbSchema, generateTechArticleSchema } from "@/lib/seo";
+
+export const metadata: Metadata = {
+    title: 'Quick Start',
+    description: 'Get started with the TxProof API in minutes. Learn how to submit receipt requests and poll for completion.',
+    alternates: {
+        canonical: constructCanonical('/quick-start'),
+    },
+};
+
+const breadcrumbs = [
+    { name: "Docs", item: "/" },
+    { name: "Quick Start", item: "/quick-start" },
+];
+
+const schema = generateTechArticleSchema(
+    'Quick Start Guide - TxProof API',
+    'Step-by-step guide to generating your first verifiable blockchain receipt.',
+    '/quick-start'
+);
 
 export default function QuickStart() {
     const jsExample = `
@@ -60,6 +81,14 @@ curl https://api.txproof.xyz/api/v1/bills/job/job_123
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(generateBreadcrumbSchema(breadcrumbs)) }}
+            />
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+            />
             <div className="space-y-4">
                 <h1 className="text-4xl font-bold tracking-tight">Quick Start</h1>
                 <p className="text-lg text-muted-foreground">

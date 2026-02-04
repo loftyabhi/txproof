@@ -605,78 +605,14 @@ router.post('/users/:id/unban', async (req: Request, res: Response) => {
     }
 });
 
-/**
- * POST /api/v1/admin/users/:id/send-verification
- * Generates a verification token and sends an email via EmailService
- */
-router.post('/users/:id/send-verification', async (req: Request, res: Response) => {
-    try {
-        const { id } = req.params;
-        const { expiryMinutes } = req.body;
-        const actorId = (req as any).user?.address || 'admin';
 
-        // 1. Fetch User
-        const { data: user, error: userError } = await supabase
-            .from('users')
-            .select('email, wallet_address')
-            .eq('id', id)
-            .single();
-
-        if (userError || !user || !user.email) {
-            return res.status(400).json({ error: 'User not found or has no email' });
-        }
-
-        // 1.1 Check if this email is already verified by another user
-        const { data: duplicateUser } = await supabase
-            .from('users')
-            .select('id')
-            .ilike('email', user.email)
-            .eq('is_email_verified', true)
-            .neq('id', id)
-            .maybeSingle();
-
-        if (duplicateUser) {
-            return res.status(400).json({ error: 'This email is already linked to another verified account.' });
-        }
-
-        // 2. Generate Token
-        const rawToken = generateRandomToken();
-        const hashedToken = hashToken(rawToken);
-        const expiresAt = new Date();
-        expiresAt.setMinutes(expiresAt.getMinutes() + (expiryMinutes || 15));
-
-        // 3. Save to DB
-        await supabase
-            .from('email_verification_tokens')
-            .insert({
-                user_id: id,
-                token_hash: hashedToken,
-                expires_at: expiresAt.toISOString()
-            });
-
-        // 4. Send Email
-        await emailService.sendVerificationEmail(user.email, rawToken, expiryMinutes || 15);
-
-        // 5. Audit Log
-        await auditService.log({
-            actorId,
-            action: 'EMAIL_VERIFICATION_SENT_ADMIN',
-            targetId: id,
-            metadata: { email: user.email, expiryMinutes },
-            ip: req.ip
-        });
-
-        res.json({ success: true, message: 'Verification email sent' });
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
-    }
-});
 
 /**
  * POST /api/v1/admin/users/:id/verify
  * Manually verify a user's email (Deletes pending tokens + Audit Log)
  */
 router.post('/users/:id/verify', async (req: Request, res: Response) => {
+    logger.info('Manual Verify Request received', { id: req.params.id });
     try {
         const { id } = req.params;
         const actorId = (req as any).user?.address || 'admin';
@@ -702,12 +638,16 @@ router.post('/users/:id/verify', async (req: Request, res: Response) => {
             actorId,
             action: 'EMAIL_VERIFIED_MANUAL',
             targetId: id,
-            metadata: { user: data.wallet_address, email: data.email },
+            metadata: {
+                user: data?.wallet_address || 'unknown',
+                email: data?.email || 'unknown'
+            },
             ip: req.ip
         });
 
         res.json({ success: true, user: data });
     } catch (e: any) {
+        logger.error('Manual Verify Error', { error: e.message, id: req.params.id });
         res.status(500).json({ error: e.message });
     }
 });
@@ -718,6 +658,7 @@ router.post('/users/:id/verify', async (req: Request, res: Response) => {
  * Admin: Trigger verification email with custom expiry
  */
 router.post('/users/:id/send-verification', async (req: Request, res: Response) => {
+    logger.info('Admin Send Verification Request received', { id: req.params.id, body: req.body });
     try {
         const { id } = req.params;
         const { expiryMinutes } = z.object({

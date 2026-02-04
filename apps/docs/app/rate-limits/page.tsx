@@ -1,6 +1,36 @@
+import { Metadata } from 'next';
+import { constructCanonical, generateBreadcrumbSchema, generateTechArticleSchema } from "@/lib/seo";
+
+export const metadata: Metadata = {
+    title: 'Rate Limits & Quotas',
+    description: 'Understand the TxProof API rate limits and monthly quotas. Details on Token Bucket limits and RPS enforcement.',
+    alternates: {
+        canonical: constructCanonical('/rate-limits'),
+    },
+};
+
+const breadcrumbs = [
+    { name: "Docs", item: "/" },
+    { name: "Rate Limits", item: "/rate-limits" },
+];
+
+const schema = generateTechArticleSchema(
+    'TxProof API Rate Limits & Quotas',
+    'Technical specification of rate limiting algorithms and usage quotas for TxProof developers.',
+    '/rate-limits'
+);
+
 export default function Quotas() {
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(generateBreadcrumbSchema(breadcrumbs)) }}
+            />
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+            />
             <div className="space-y-4">
                 <h1 className="text-4xl font-bold tracking-tight">Quotas & Plans</h1>
                 <p className="text-lg text-muted-foreground leading-relaxed">

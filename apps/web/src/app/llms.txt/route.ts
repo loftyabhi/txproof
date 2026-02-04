@@ -17,6 +17,11 @@ Main Sections:
 - Transaction Intelligence: https://txproof.xyz/transaction-intelligence
 - Knowledge Base: https://txproof.xyz/learn
 - How to Read Transactions: https://txproof.xyz/how-to-read-blockchain-transaction
+- Developer Console: https://txproof.xyz/developers (API Keys & Usage)
+- Email Verification: https://txproof.xyz/verify
+- About Us: https://txproof.xyz/about-us
+- Contact Sales: https://txproof.xyz/contact-us
+- Support Infrastructure: https://txproof.xyz/support
 
 Privacy Policy: https://txproof.xyz/privacy-policy
 Terms of Service: https://txproof.xyz/terms-of-service
