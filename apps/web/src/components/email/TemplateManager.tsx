@@ -10,7 +10,11 @@ interface Template {
     category: 'transactional' | 'promotional';
 }
 
-export default function TemplateManager() {
+interface TemplateManagerProps {
+    csrfToken: string;
+}
+
+export default function TemplateManager({ csrfToken }: TemplateManagerProps) {
     const [templates, setTemplates] = useState<Template[]>([]);
     const [editing, setEditing] = useState<Partial<Template> | null>(null);
     const [isNew, setIsNew] = useState(false);
@@ -34,7 +38,10 @@ export default function TemplateManager() {
 
         const res = await fetch(url, {
             method,
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken
+            },
             body: JSON.stringify({
                 name: editing.name,
                 subject: editing.subject,

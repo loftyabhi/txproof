@@ -5,7 +5,11 @@ import DeliveryMonitor from '../../../components/email/DeliveryMonitor';
 import TemplateManager from '../../../components/email/TemplateManager';
 import CampaignSender from '../../../components/email/CampaignSender';
 
-export default function EmailOpsPage() {
+interface EmailOpsProps {
+    csrfToken: string;
+}
+
+export default function EmailOpsPage({ csrfToken }: EmailOpsProps) {
     const [tab, setTab] = useState<'monitor' | 'campaign' | 'templates'>('monitor');
 
     return (
@@ -41,8 +45,8 @@ export default function EmailOpsPage() {
 
             <div className="min-h-[600px]">
                 {tab === 'monitor' && <DeliveryMonitor />}
-                {tab === 'campaign' && <CampaignSender />}
-                {tab === 'templates' && <TemplateManager />}
+                {tab === 'campaign' && <CampaignSender csrfToken={csrfToken} />}
+                {tab === 'templates' && <TemplateManager csrfToken={csrfToken} />}
             </div>
         </div>
     );

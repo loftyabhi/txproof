@@ -6,6 +6,8 @@ import { ConsoleLogin } from '@/components/console/ConsoleLogin';
 import { KeyManager } from '@/components/console/KeyManager';
 import { OverviewStats } from '@/components/console/OverviewStats';
 import { DashboardLoader } from '@/components/console/DashboardLoader';
+import { WebhookManager } from '@/components/console/WebhookManager';
+import { UsageAnalytics } from '@/components/console/UsageAnalytics';
 import { useAccount } from 'wagmi';
 
 import { toast } from 'sonner';
@@ -13,7 +15,9 @@ import { ProfileModal } from '@/components/console/ProfileModal';
 
 export function DevelopersClient() {
     const { isAuthenticated, isLoading: isAuthLoading, token, logout } = useConsoleAuth();
-    const { isConnected } = useAccount(); // Wagmi state validation
+    const { isConnected } = useAccount();
+
+    const [activeTab, setActiveTab] = useState<'overview' | 'keys' | 'webhooks' | 'usage'>('overview');
 
     // Data State
     const [keys, setKeys] = useState<any[]>([]);
@@ -72,19 +76,9 @@ export function DevelopersClient() {
             }
 
             const newKeyData = await res.json();
-
-            // Analytics Tracking
-            if (typeof window !== 'undefined' && (window as any).gtag) {
-                (window as any).gtag('event', 'api_key_created', {
-                    'event_category': 'developer_console',
-                    'key_name': name
-                });
-            }
-
             setShowNewKey(newKeyData.key);
             toast.success('API Key created successfully');
-
-            await fetchData(); // Refresh list
+            await fetchData();
         } catch (e: any) {
             toast.error(e.message);
         }
@@ -102,13 +96,6 @@ export function DevelopersClient() {
             });
 
             if (res.ok) {
-                // Analytics Tracking
-                if (typeof window !== 'undefined' && (window as any).gtag) {
-                    (window as any).gtag('event', 'api_key_revoked', {
-                        'event_category': 'developer_console'
-                    });
-                }
-
                 toast.success('API Key revoked');
                 await fetchData();
             } else {
@@ -141,15 +128,15 @@ export function DevelopersClient() {
         <div className="min-h-screen bg-black text-white p-4 md:p-8">
             <div className="max-w-7xl mx-auto space-y-8">
                 {/* Header */}
-                <div className="flex justify-between items-center border-b border-white/10 pb-6">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/10 pb-6">
                     <div>
                         <h1 className="text-3xl font-bold">Developer Console</h1>
                         <p className="text-gray-400">Manage your seamless integration with TxProof Protocol</p>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 w-full md:w-auto">
                         <button
                             onClick={() => setIsProfileOpen(true)}
-                            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm transition-colors group"
+                            className="flex-1 md:flex-none flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm transition-colors group"
                         >
                             <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center text-xs font-bold uppercase">
                                 {userProfile?.name?.charAt(0) || 'U'}
@@ -165,6 +152,75 @@ export function DevelopersClient() {
                             Sign Out
                         </button>
                     </div>
+                </div>
+
+                {/* Navigation Tabs */}
+                <div className="flex overflow-x-auto gap-2 border-b border-white/10">
+                    {(['overview', 'keys', 'webhooks', 'usage'] as const).map(tab => (
+                        <button
+                            key={tab}
+                            onClick={() => setActiveTab(tab)}
+                            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap capitalize ${activeTab === tab
+                                    ? 'border-blue-500 text-blue-400'
+                                    : 'border-transparent text-gray-400 hover:text-white hover:border-white/20'
+                                }`}
+                        >
+                            {tab}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Content Area */}
+                <div className="min-h-[400px]">
+                    {activeTab === 'overview' && (
+                        <div className="space-y-8 animate-in fade-in duration-300">
+                            <OverviewStats
+                                usageData={usage}
+                                totalQuota={totalQuota}
+                                billingTier={planName}
+                            />
+                            {/* Documentation / Help */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="p-6 rounded-2xl bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/20">
+                                    <h3 className="font-semibold text-blue-200 mb-2">Documentation</h3>
+                                    <p className="text-sm text-gray-400 mb-4">Learn how to integrate the Receipt API into your dApp. Includes examples for React, Node, and Python.</p>
+                                    <a href="/docs" className="text-sm text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1">
+                                        Read Docs &rarr;
+                                    </a>
+                                </div>
+                                <div className="p-6 rounded-2xl bg-gradient-to-br from-orange-900/20 to-red-900/20 border border-orange-500/20">
+                                    <h3 className="font-semibold text-orange-200 mb-2">Need Enterprise Limits?</h3>
+                                    <p className="text-sm text-gray-400 mb-4">Get custom rate limits, white-label PDF branding, and dedicated support.</p>
+                                    <a href="/contact-us" className="text-sm text-orange-400 hover:text-orange-300 font-medium">
+                                        Contact Sales
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'keys' && (
+                        <div className="animate-in fade-in duration-300">
+                            <KeyManager
+                                keys={keys}
+                                onCreate={handleCreateKey}
+                                onRevoke={handleRevokeKey}
+                                isLoading={isLoadingData}
+                            />
+                        </div>
+                    )}
+
+                    {activeTab === 'webhooks' && (
+                        <div className="animate-in fade-in duration-300">
+                            <WebhookManager token={token || ''} />
+                        </div>
+                    )}
+
+                    {activeTab === 'usage' && (
+                        <div className="animate-in fade-in duration-300">
+                            <UsageAnalytics token={token || ''} />
+                        </div>
+                    )}
                 </div>
 
                 {/* New Key Modal (Simple Overlay) */}
@@ -199,38 +255,6 @@ export function DevelopersClient() {
                     </div>
                 )}
 
-                {/* Overview Stats */}
-                <OverviewStats
-                    usageData={usage}
-                    totalQuota={totalQuota}
-                    billingTier={planName}
-                />
-
-                {/* Key Management */}
-                <KeyManager
-                    keys={keys}
-                    onCreate={handleCreateKey}
-                    onRevoke={handleRevokeKey}
-                    isLoading={isLoadingData}
-                />
-
-                {/* Documentation / Help */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="p-6 rounded-2xl bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/20">
-                        <h3 className="font-semibold text-blue-200 mb-2">Documentation</h3>
-                        <p className="text-sm text-gray-400 mb-4">Learn how to integrate the Receipt API into your dApp. Includes examples for React, Node, and Python.</p>
-                        <a href="/docs" className="text-sm text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1">
-                            Read Docs &rarr;
-                        </a>
-                    </div>
-                    <div className="p-6 rounded-2xl bg-gradient-to-br from-orange-900/20 to-red-900/20 border border-orange-500/20">
-                        <h3 className="font-semibold text-orange-200 mb-2">Need Enterprise Limits?</h3>
-                        <p className="text-sm text-gray-400 mb-4">Get custom rate limits, white-label PDF branding, and dedicated support.</p>
-                        <a href="/contact-us" className="text-sm text-orange-400 hover:text-orange-300 font-medium">
-                            Contact Sales
-                        </a>
-                    </div>
-                </div>
                 <ProfileModal
                     isOpen={isProfileOpen}
                     onClose={() => setIsProfileOpen(false)}

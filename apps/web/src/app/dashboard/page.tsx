@@ -847,7 +847,7 @@ export default function DashboardPage() {
                 {/* --- EMAIL TAB --- */}
                 {activeTab === 'email' && (
                     <div className="bg-white/5 border border-white/10 rounded-3xl p-2 backdrop-blur-sm">
-                        <EmailOpsPage />
+                        <EmailOpsPage csrfToken={csrfToken} />
                     </div>
                 )}
 

@@ -137,6 +137,19 @@ router.put('/me', verifyUser, async (req: Request, res: Response) => {
             if (current?.is_email_verified) {
                 throw new Error('Verified email cannot be changed. Please contact support.');
             }
+
+            // Check for unique email
+            const { data: duplicate } = await supabase
+                .from('users')
+                .select('id')
+                .eq('email', email)
+                .neq('id', userId)
+                .maybeSingle();
+
+            if (duplicate) {
+                throw new Error('Email already in use by another account');
+            }
+
             updates.email = email;
             updates.is_email_verified = false; // Reset verification on change
             // Trigger verification email logic here if implemented

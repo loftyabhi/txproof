@@ -2,7 +2,11 @@
 
 import { useState, useEffect } from 'react';
 
-export default function CampaignSender() {
+interface CampaignSenderProps {
+    csrfToken: string;
+}
+
+export default function CampaignSender({ csrfToken }: CampaignSenderProps) {
     const [templates, setTemplates] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
 
@@ -26,7 +30,10 @@ export default function CampaignSender() {
         try {
             const res = await fetch('/api/v1/admin/email/send', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                },
                 body: JSON.stringify({
                     category: form.category,
                     templateId: form.templateId,
