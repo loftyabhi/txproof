@@ -4,6 +4,7 @@ import { logger } from '../../lib/logger';
 import { saasMiddleware, AuthenticatedRequest } from '../../middleware/saasAuth';
 import { ApiKeyService } from '../../services/ApiKeyService';
 import { EmailQueueService } from '../../services/EmailQueueService';
+import { AuthService } from '../../services/AuthService';
 import { UsageController } from '../../controllers/UsageController';
 import { randomBytes, createHash } from 'crypto';
 import { z } from 'zod';
@@ -11,16 +12,55 @@ import { z } from 'zod';
 const router = Router();
 const apiKeyService = new ApiKeyService();
 const emailQueueService = new EmailQueueService();
+const authService = new AuthService();
 const usageController = new UsageController();
 
-// Apply Auth Middleware
+// --- Public Routes (No Auth Required) ---
+
+/**
+ * POST /auth/nonce
+ * Generate login nonce for wallet signing
+ */
+router.post('/auth/nonce', async (req: Request, res: Response) => {
+    try {
+        const { walletAddress } = req.body;
+        if (!walletAddress) return res.status(400).json({ error: 'Wallet address required' });
+
+        const nonce = await authService.generateAndStoreNonce(walletAddress);
+        res.json({ nonce });
+    } catch (error: any) {
+        logger.error('Nonce generation failed', { error: error.message });
+        res.status(500).json({ error: 'Failed to generate nonce' });
+    }
+});
+
+/**
+ * POST /auth/login
+ * Verify signature and issue JWT
+ */
+router.post('/auth/login', async (req: Request, res: Response) => {
+    try {
+        const { walletAddress, signature, nonce } = req.body;
+        if (!walletAddress || !signature || !nonce) {
+            return res.status(400).json({ error: 'Missing login credentials' });
+        }
+
+        const result = await authService.loginUser(walletAddress, signature, nonce);
+        res.json(result);
+    } catch (error: any) {
+        logger.error('Login failed', { error: error.message, wallet: req.body.walletAddress });
+        res.status(401).json({ error: error.message || 'Login failed' });
+    }
+});
+
+// --- Protected Routes (Require SaaS Auth) ---
 router.use(saasMiddleware);
 
 /**
- * GET /auth
+ * GET /me
  * Verify current session and return user details
  */
-router.get('/auth', async (req: Request, res: Response) => {
+router.get('/me', async (req: Request, res: Response) => {
     try {
         const user = (req as AuthenticatedRequest).user;
         if (!user) {
