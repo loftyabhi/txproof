@@ -456,29 +456,55 @@ router.put('/users/:id/quota', async (req: Request, res: Response) => {
 
 /**
  * POST /api/v1/admin/users/:id/suspend
- * Emergency: Set quota_override to 0
+ * Emergency: Suspend user account and deactivate all API keys
  */
 router.post('/users/:id/suspend', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const actorId = (req as any).user?.address || 'admin';
 
-        const { data: oldUser } = await supabase.from('users').select('quota_override').eq('id', id).single();
+        // Fetch old user state for audit
+        const { data: oldUser } = await supabase
+            .from('users')
+            .select('quota_override, account_status')
+            .eq('id', id)
+            .single();
 
+        // 1. Update user account status and quota
         const { data, error } = await supabase
             .from('users')
-            .update({ quota_override: 0 })
+            .update({
+                quota_override: 0,
+                account_status: 'suspended'
+            })
             .eq('id', id)
             .select()
             .single();
 
         if (error) throw error;
 
+        // 2. Deactivate all API keys for this user
+        const { error: keysError } = await supabase
+            .from('api_keys')
+            .update({ is_active: false })
+            .eq('owner_user_id', id);
+
+        if (keysError) {
+            logger.error('Failed to deactivate API keys during suspension', {
+                userId: id,
+                error: keysError.message
+            });
+        }
+
+        // 3. Audit log
         await auditService.log({
             actorId,
-            action: 'USER_QUOTA_SUSPENDED',
+            action: 'USER_SUSPENDED',
             targetId: id,
-            metadata: { old_override: oldUser?.quota_override },
+            metadata: {
+                old_override: oldUser?.quota_override,
+                old_status: oldUser?.account_status
+            },
             ip: req.ip
         });
 
@@ -490,29 +516,55 @@ router.post('/users/:id/suspend', async (req: Request, res: Response) => {
 
 /**
  * POST /api/v1/admin/users/:id/restore-quota
- * Restore: Set quota_override to NULL (Default to monthly)
+ * Restore: Set quota_override to NULL and reactivate account
  */
 router.post('/users/:id/restore-quota', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const actorId = (req as any).user?.address || 'admin';
 
-        const { data: oldUser } = await supabase.from('users').select('quota_override').eq('id', id).single();
+        // Fetch old user state for audit
+        const { data: oldUser } = await supabase
+            .from('users')
+            .select('quota_override, account_status')
+            .eq('id', id)
+            .single();
 
+        // 1. Update user account status and quota
         const { data, error } = await supabase
             .from('users')
-            .update({ quota_override: null })
+            .update({
+                quota_override: null,
+                account_status: 'active'
+            })
             .eq('id', id)
             .select()
             .single();
 
         if (error) throw error;
 
+        // 2. Reactivate all API keys for this user (that were suspended)
+        const { error: keysError } = await supabase
+            .from('api_keys')
+            .update({ is_active: true })
+            .eq('owner_user_id', id);
+
+        if (keysError) {
+            logger.error('Failed to reactivate API keys during restoration', {
+                userId: id,
+                error: keysError.message
+            });
+        }
+
+        // 3. Audit log
         await auditService.log({
             actorId,
-            action: 'USER_QUOTA_RESTORED',
+            action: 'USER_RESTORED',
             targetId: id,
-            metadata: { old_override: oldUser?.quota_override },
+            metadata: {
+                old_override: oldUser?.quota_override,
+                old_status: oldUser?.account_status
+            },
             ip: req.ip
         });
 

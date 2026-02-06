@@ -95,7 +95,10 @@ export function ConsoleAuthProvider({ children }: { children: React.ReactNode })
                 })
             });
 
-            if (!loginRes.ok) throw new Error('Login failed');
+            if (!loginRes.ok) {
+                const errorData = await loginRes.json().catch(() => ({}));
+                throw new Error(errorData.error || errorData.message || 'Login failed');
+            }
             const data = await loginRes.json(); // { token, user }
 
             // 4. Store & Set State
@@ -109,7 +112,7 @@ export function ConsoleAuthProvider({ children }: { children: React.ReactNode })
                 isLoading: false
             });
 
-            router.refresh();
+            // router.refresh(); // Commented out - causes re-render that clears error state
 
         } catch (error) {
             console.error('Login Error:', error);

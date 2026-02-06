@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
+import { CheckCircle2, XCircle, Loader2, Send, Copy, X } from 'lucide-react';
 
 interface Webhook {
     id: string;
@@ -15,6 +16,15 @@ interface WebhookManagerProps {
     token: string;
 }
 
+interface TestResult {
+    success: boolean;
+    statusCode?: number;
+    responseTime?: number;
+    error?: string;
+    requestPayload?: any;
+    responseBody?: string;
+}
+
 export const WebhookManager: React.FC<WebhookManagerProps> = ({ token }) => {
     const [webhooks, setWebhooks] = useState<Webhook[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -26,6 +36,14 @@ export const WebhookManager: React.FC<WebhookManagerProps> = ({ token }) => {
 
     // New Webhook Secret Display
     const [newSecret, setNewSecret] = useState<string | null>(null);
+
+    // Test State
+    const [testingWebhookId, setTestingWebhookId] = useState<string | null>(null);
+    const [testResult, setTestResult] = useState<TestResult | null>(null);
+    const [showTestModal, setShowTestModal] = useState(false);
+
+    // Delete Confirmation State
+    const [deleteWebhookId, setDeleteWebhookId] = useState<string | null>(null);
 
     const fetchWebhooks = React.useCallback(async () => {
         setIsLoading(true);
@@ -81,11 +99,58 @@ export const WebhookManager: React.FC<WebhookManagerProps> = ({ token }) => {
         }
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('Are you sure? This action cannot be undone.')) return;
+    const handleTest = async (webhookId: string) => {
+        setTestingWebhookId(webhookId);
+        setTestResult(null);
+        setShowTestModal(true);
 
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/webhooks/${id}`, {
+            const startTime = Date.now();
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/webhooks/${webhookId}/test`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            const responseTime = Date.now() - startTime;
+            const data = await res.json();
+
+            if (res.ok) {
+                setTestResult({
+                    success: true,
+                    statusCode: data.statusCode || 200,
+                    responseTime,
+                    requestPayload: data.payload,
+                    responseBody: data.response
+                });
+                toast.success('Test webhook delivered successfully');
+            } else {
+                setTestResult({
+                    success: false,
+                    error: data.error || 'Test failed',
+                    requestPayload: data.payload
+                });
+                toast.error('Test webhook failed');
+            }
+        } catch (e: any) {
+            setTestResult({
+                success: false,
+                error: e.message || 'Network error'
+            });
+            toast.error('Failed to send test webhook');
+        } finally {
+            setTestingWebhookId(null);
+        }
+    };
+
+    const handleDeleteClick = (id: string) => {
+        setDeleteWebhookId(id);
+    };
+
+    const confirmDelete = async () => {
+        if (!deleteWebhookId) return;
+
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/webhooks/${deleteWebhookId}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${token}` }
             });
@@ -98,6 +163,8 @@ export const WebhookManager: React.FC<WebhookManagerProps> = ({ token }) => {
             }
         } catch (e) {
             toast.error('Error deleting webhook');
+        } finally {
+            setDeleteWebhookId(null);
         }
     };
 
@@ -113,6 +180,107 @@ export const WebhookManager: React.FC<WebhookManagerProps> = ({ token }) => {
                     + Add Endpoint
                 </button>
             </div>
+
+            {/* Test Result Modal */}
+            {showTestModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                    <div className="bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col shadow-2xl">
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between p-6 border-b border-white/10">
+                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                <Send size={20} className="text-blue-400" />
+                                Webhook Test Result
+                            </h3>
+                            <button
+                                onClick={() => setShowTestModal(false)}
+                                className="text-gray-400 hover:text-white transition"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                            {!testResult ? (
+                                <div className="flex flex-col items-center justify-center py-12">
+                                    <Loader2 size={40} className="text-blue-400 animate-spin mb-4" />
+                                    <p className="text-gray-400">Sending test event...</p>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Status Banner */}
+                                    <div className={`p-4 rounded-xl border flex items-center gap-3 ${testResult.success
+                                        ? 'bg-green-500/10 border-green-500/30'
+                                        : 'bg-red-500/10 border-red-500/30'
+                                        }`}>
+                                        {testResult.success ? (
+                                            <>
+                                                <CheckCircle2 size={24} className="text-green-400" />
+                                                <div>
+                                                    <p className="text-green-400 font-semibold">Webhook delivered successfully</p>
+                                                    <p className="text-sm text-gray-400">
+                                                        Status: {testResult.statusCode} • Response time: {testResult.responseTime}ms
+                                                    </p>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <XCircle size={24} className="text-red-400" />
+                                                <div>
+                                                    <p className="text-red-400 font-semibold">Webhook delivery failed</p>
+                                                    <p className="text-sm text-gray-400">{testResult.error}</p>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+
+                                    {/* Request Payload */}
+                                    {testResult.requestPayload && (
+                                        <div>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="text-sm font-semibold text-gray-400 uppercase">Request Payload</label>
+                                                <button
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(JSON.stringify(testResult.requestPayload, null, 2));
+                                                        toast.success('Copied to clipboard');
+                                                    }}
+                                                    className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                                                >
+                                                    <Copy size={12} />
+                                                    Copy
+                                                </button>
+                                            </div>
+                                            <pre className="bg-black border border-white/10 rounded-lg p-4 text-xs text-green-300 font-mono overflow-x-auto">
+                                                {JSON.stringify(testResult.requestPayload, null, 2)}
+                                            </pre>
+                                        </div>
+                                    )}
+
+                                    {/* Response Body */}
+                                    {testResult.responseBody && (
+                                        <div>
+                                            <label className="text-sm font-semibold text-gray-400 uppercase mb-2 block">Response Body</label>
+                                            <pre className="bg-black border border-white/10 rounded-lg p-4 text-xs text-gray-300 font-mono overflow-x-auto max-h-48">
+                                                {testResult.responseBody}
+                                            </pre>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-6 border-t border-white/10 flex justify-end">
+                            <button
+                                onClick={() => setShowTestModal(false)}
+                                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm transition"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Secret Display Modal */}
             {newSecret && (
@@ -236,11 +404,25 @@ export const WebhookManager: React.FC<WebhookManagerProps> = ({ token }) => {
                                 </div>
                             </div>
                             <div className="flex gap-3">
-                                <button className="text-xs text-gray-400 hover:text-white border border-transparent hover:border-white/10 px-3 py-1.5 rounded transition">
-                                    Test
+                                <button
+                                    onClick={() => handleTest(wh.id)}
+                                    disabled={testingWebhookId === wh.id}
+                                    className="text-xs text-gray-400 hover:text-white border border-transparent hover:border-white/10 px-3 py-1.5 rounded transition disabled:opacity-50 flex items-center gap-1"
+                                >
+                                    {testingWebhookId === wh.id ? (
+                                        <>
+                                            <Loader2 size={12} className="animate-spin" />
+                                            Testing...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Send size={12} />
+                                            Test
+                                        </>
+                                    )}
                                 </button>
                                 <button
-                                    onClick={() => handleDelete(wh.id)}
+                                    onClick={() => handleDeleteClick(wh.id)}
                                     className="text-xs text-red-400 hover:text-red-300 border border-transparent hover:border-red-500/20 hover:bg-red-500/10 px-3 py-1.5 rounded transition"
                                 >
                                     Delete
@@ -250,6 +432,32 @@ export const WebhookManager: React.FC<WebhookManagerProps> = ({ token }) => {
                     ))
                 )}
             </div>
+
+            {/* Delete Confirmation Modal */}
+            {deleteWebhookId && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                    <div className="bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+                        <h3 className="text-lg font-bold text-white mb-3">Delete Webhook?</h3>
+                        <p className="text-gray-400 text-sm mb-6">
+                            Are you sure you want to delete this webhook? This action cannot be undone and any applications using this endpoint will immediately stop receiving events.
+                        </p>
+                        <div className="flex gap-3 justify-end">
+                            <button
+                                onClick={() => setDeleteWebhookId(null)}
+                                className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg text-sm font-medium transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmDelete}
+                                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition-colors"
+                            >
+                                Delete Webhook
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

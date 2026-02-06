@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function NotFound() {
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white font-sans flex items-center justify-center p-6 selection:bg-violet-500/30">
+        <div className="flex-grow w-full bg-[#0a0a0a] text-white font-sans flex items-center justify-center p-6 selection:bg-violet-500/30">
             {/* Background Gradients */}
             <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-violet-900/10 rounded-full blur-[120px]" />

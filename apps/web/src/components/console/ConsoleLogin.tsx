@@ -1,11 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useConnect, useAccount, useChainId, useSwitchChain } from 'wagmi';
 import { useConsoleAuth } from '@/hooks/useConsoleAuth';
 import { toast } from 'sonner';
+import { BannedUserModal } from './BannedUserModal';
 
 const BASE_CHAIN_ID = 8453;
 
-export const ConsoleLogin = () => {
+interface ConsoleLoginProps {
+    bannedReason: string | null;
+    setBannedReason: (reason: string | null) => void;
+}
+
+export const ConsoleLogin = ({ bannedReason, setBannedReason }: ConsoleLoginProps) => {
     const { connect, connectors, isPending: isConnectLoading } = useConnect();
     const { isConnected, chainId } = useAccount();
     const { switchChain, isPending: isSwitchLoading } = useSwitchChain();
@@ -32,7 +38,19 @@ export const ConsoleLogin = () => {
             }
         } catch (err: any) {
             console.error(err);
-            toast.error(err.message || 'Action failed');
+            const errorMessage = err.message || 'Action failed';
+
+            console.error('Login Error Caught:', errorMessage);
+
+            // Check if error is related to ban/suspension
+            // The backend sends specific messages like "User is banned: [Reason]" or just the reason if 403
+            if (errorMessage.toLowerCase().includes('ban') || errorMessage.toLowerCase().includes('suspend')) {
+                console.log('Ban detected, setting reason:', errorMessage);
+                setBannedReason(errorMessage);
+            } else {
+                console.log('Standard error, showing toast');
+                toast.error(errorMessage);
+            }
         }
     };
 
@@ -47,6 +65,8 @@ export const ConsoleLogin = () => {
         if (isWrongNetwork) buttonText = 'Switch to Base Mainnet';
         else buttonText = 'Sign In with Wallet';
     }
+
+    console.log('ConsoleLogin render - bannedReason:', bannedReason);
 
     return (
         <div className="flex flex-col items-center justify-center min-h-screen text-center p-6">
@@ -65,10 +85,10 @@ export const ConsoleLogin = () => {
                         onClick={handleAction}
                         disabled={isLoading}
                         className={`w-full py-3 px-4 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${isConnected && !isWrongNetwork
-                                ? 'bg-blue-600 hover:bg-blue-500 text-white'
-                                : isWrongNetwork
-                                    ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                                    : 'bg-white text-black hover:bg-gray-200'
+                            ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                            : isWrongNetwork
+                                ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                                : 'bg-white text-black hover:bg-gray-200'
                             }`}
                     >
                         {isLoading ? (
@@ -90,6 +110,11 @@ export const ConsoleLogin = () => {
                     </p>
                 </div>
             </div>
+            <BannedUserModal
+                isOpen={!!bannedReason}
+                reason={bannedReason}
+                onClose={() => setBannedReason(null)}
+            />
         </div>
     );
 };

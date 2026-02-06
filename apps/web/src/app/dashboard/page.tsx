@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { formatEther, parseEther, erc20Abi, formatUnits } from 'viem';
 import { base } from 'wagmi/chains';
+import { ConfirmationModal } from '@/components/ui/ConfirmationModal';
 
 // Minimal ABI for SupportVault (unchanged)
 const VAULT_ABI = [
@@ -360,9 +361,22 @@ export default function DashboardPage() {
         }
     };
 
-    const handleSuspendUser = async () => {
+    // --- Confirmation Modal State ---
+    const [confirmAction, setConfirmAction] = useState<'SUSPEND' | 'BAN' | 'UNBAN' | null>(null);
+
+    const executeConfirmAction = async () => {
+        if (!confirmAction) return;
+
+        if (confirmAction === 'SUSPEND') await executeSuspendUser();
+        if (confirmAction === 'BAN') await executeBanUser();
+        if (confirmAction === 'UNBAN') await executeUnbanUser();
+
+        setConfirmAction(null);
+    };
+
+    const executeSuspendUser = async () => {
         if (!quotaUser) return;
-        if (!confirm("Are you sure? This will block the user immediately.")) return;
+        // Removed native confirm
         const toastId = toast.loading("Suspending user...");
         try {
             await axios.post(`/api/v1/admin/users/${quotaUser.id}/suspend`, {}, { headers: { 'X-CSRF-Token': csrfToken } });
@@ -383,9 +397,9 @@ export default function DashboardPage() {
         } catch (err) { handleError(err); toast.dismiss(toastId); }
     };
 
-    const handleBanUser = async () => {
+    const executeBanUser = async () => {
         if (!quotaUser || !banReason) return;
-        if (!confirm("Confirm BAN? This user will be blocked immediately.")) return;
+        // Removed native confirm
         const toastId = toast.loading("Banning user...");
         try {
             await axios.post(`/api/v1/admin/users/${quotaUser.id}/ban`, { reason: banReason }, { headers: { 'X-CSRF-Token': csrfToken } });
@@ -396,9 +410,9 @@ export default function DashboardPage() {
         } catch (err) { handleError(err); toast.dismiss(toastId); }
     };
 
-    const handleUnbanUser = async () => {
+    const executeUnbanUser = async () => {
         if (!quotaUser) return;
-        if (!confirm("Confirm UNBAN? Access will be restored.")) return;
+        // Removed native confirm
         const toastId = toast.loading("Unbanning user...");
         try {
             await axios.post(`/api/v1/admin/users/${quotaUser.id}/unban`, {}, { headers: { 'X-CSRF-Token': csrfToken } });
@@ -1079,52 +1093,172 @@ export default function DashboardPage() {
                                     </div>
                                 )}
 
-                                <div className="grid gap-4">
-                                    {isLoadingData ? <Loader2 className="animate-spin text-zinc-500 mx-auto" /> : apiKeys.map((key) => (
-                                        <div key={key.id} onClick={() => setDetailItem({ type: 'apikey', data: key })} className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 cursor-pointer hover:bg-white/10 transition-colors group relative">
-                                            <div>
-                                                <div className="flex items-center gap-3 mb-2">
-                                                    <div className="font-mono text-lg text-white font-bold tracking-tight">{key.prefix}•••••••••••••</div>
-                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${key.is_active ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
-                                                        {key.is_active ? 'Active' : 'Revoked'}
-                                                    </span>
-                                                    {key.abuse_flag && (
-                                                        <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-600/20 text-red-500 border border-red-500/20">
-                                                            <Ban size={10} /> BANNED
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="text-sm text-zinc-400 flex items-center gap-4">
-                                                    <span className="flex items-center gap-1"><Globe size={12} /> {key.environment}</span>
-                                                    <span className="flex items-center gap-1 bg-white/5 px-2 rounded text-xs text-zinc-300">{key.plan?.name || 'Free'} Plan</span>
-                                                    <span className="text-zinc-500 text-xs">ID: {key.id.slice(0, 8)}...</span>
-                                                </div>
-                                                <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity md:hidden">
-                                                    <ChevronRight size={20} className="text-zinc-500" />
-                                                </div>
-                                            </div>
-                                            {isAdmin && (
-                                                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                                                    <button
-                                                        onClick={() => handleUpdateKey(key.id, { abuseFlag: !key.abuse_flag })}
-                                                        className={`p-2 rounded-lg border transition-colors ${key.abuse_flag ? 'border-red-500 text-red-400 hover:bg-red-500/10' : 'border-white/10 text-zinc-400 hover:text-white hover:bg-white/5'}`}
-                                                        title="Toggle Abuse Flag"
-                                                    >
-                                                        <AlertCircle size={18} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleUpdateKey(key.id, { isActive: !key.is_active })}
-                                                        className="p-2 text-zinc-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors border border-white/10"
-                                                        title={key.is_active ? "Revoke Key" : "Activate Key"}
-                                                    >
-                                                        {key.is_active ? <Lock size={18} /> : <Unlock size={18} />}
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
-                                    {!isLoadingData && apiKeys.length === 0 && (
-                                        <div className="text-center py-12 text-zinc-500">No API keys found.</div>
+                                <div className="space-y-6">
+                                    {isLoadingData ? (
+                                        <Loader2 className="animate-spin text-zinc-500 mx-auto" />
+                                    ) : (
+                                        <>
+                                            {(() => {
+                                                // Categorize keys
+                                                const activeKeys = apiKeys.filter(k =>
+                                                    k.is_active &&
+                                                    (!k.owner_account_status || k.owner_account_status === 'active') &&
+                                                    !k.abuse_flag
+                                                );
+                                                const bannedKeys = apiKeys.filter(k =>
+                                                    k.owner_account_status === 'banned' || k.abuse_flag
+                                                );
+                                                const suspendedKeys = apiKeys.filter(k =>
+                                                    k.owner_account_status === 'suspended' &&
+                                                    !k.abuse_flag
+                                                );
+                                                const revokedKeys = apiKeys.filter(k =>
+                                                    !k.is_active &&
+                                                    k.owner_account_status !== 'banned' &&
+                                                    k.owner_account_status !== 'suspended' &&
+                                                    !k.abuse_flag
+                                                );
+
+                                                const renderKeyCard = (key: any) => (
+                                                    <div key={key.id} onClick={() => setDetailItem({ type: 'apikey', data: key })} className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 cursor-pointer hover:bg-white/10 transition-colors group relative">
+                                                        <div>
+                                                            <div className="flex items-center gap-3 mb-2">
+                                                                <div className="font-mono text-lg text-white font-bold tracking-tight">{key.prefix}•••••••••••••</div>
+                                                                {(() => {
+                                                                    // Determine effective status
+                                                                    const ownerBanned = key.owner_account_status === 'banned';
+                                                                    const ownerSuspended = key.owner_account_status === 'suspended';
+                                                                    const isRevoked = !key.is_active;
+
+                                                                    if (ownerBanned || key.abuse_flag) {
+                                                                        return (
+                                                                            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-600/20 text-red-500 border border-red-500/20">
+                                                                                <Ban size={10} /> BANNED
+                                                                            </span>
+                                                                        );
+                                                                    } else if (ownerSuspended) {
+                                                                        return (
+                                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-orange-500/10 text-orange-400">
+                                                                                SUSPENDED
+                                                                            </span>
+                                                                        );
+                                                                    } else if (isRevoked) {
+                                                                        return (
+                                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-500/10 text-red-400">
+                                                                                REVOKED
+                                                                            </span>
+                                                                        );
+                                                                    } else {
+                                                                        return (
+                                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-green-500/10 text-green-400">
+                                                                                ACTIVE
+                                                                            </span>
+                                                                        );
+                                                                    }
+                                                                })()}
+                                                            </div>
+                                                            <div className="text-sm text-zinc-400 flex flex-wrap items-center gap-3">
+                                                                <span className="flex items-center gap-1"><Globe size={12} /> {key.environment}</span>
+                                                                <span className="flex items-center gap-1 bg-white/5 px-2 rounded text-xs text-zinc-300">
+                                                                    {key.plan?.name || 'Free'} Plan
+                                                                    {key.plan?.id && <span className="text-zinc-500 ml-1">({key.plan.id})</span>}
+                                                                </span>
+                                                                {key.owner_wallet_address && (
+                                                                    <span className="font-mono text-xs text-zinc-500">
+                                                                        {key.owner_wallet_address.slice(0, 6)}...{key.owner_wallet_address.slice(-4)}
+                                                                    </span>
+                                                                )}
+                                                                {key.owner_email && (
+                                                                    <span className="text-xs text-zinc-500">{key.owner_email}</span>
+                                                                )}
+                                                            </div>
+                                                            <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity md:hidden">
+                                                                <ChevronRight size={20} className="text-zinc-500" />
+                                                            </div>
+                                                        </div>
+                                                        {isAdmin && (
+                                                            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                                                <button
+                                                                    onClick={() => handleUpdateKey(key.id, { abuseFlag: !key.abuse_flag })}
+                                                                    className={`p-2 rounded-lg border transition-colors ${key.abuse_flag ? 'border-red-500 text-red-400 hover:bg-red-500/10' : 'border-white/10 text-zinc-400 hover:text-white hover:bg-white/5'}`}
+                                                                    title="Toggle Abuse Flag"
+                                                                >
+                                                                    <AlertCircle size={18} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleUpdateKey(key.id, { isActive: !key.is_active })}
+                                                                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors border border-white/10"
+                                                                    title={key.is_active ? "Revoke Key" : "Activate Key"}
+                                                                >
+                                                                    {key.is_active ? <Lock size={18} /> : <Unlock size={18} />}
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+
+                                                return (
+                                                    <>
+                                                        {/* Active Keys Section */}
+                                                        {activeKeys.length > 0 && (
+                                                            <div>
+                                                                <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                                                    <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                                                    Active Keys ({activeKeys.length})
+                                                                </h3>
+                                                                <div className="grid gap-4">
+                                                                    {activeKeys.map(renderKeyCard)}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Banned Keys Section */}
+                                                        {bannedKeys.length > 0 && (
+                                                            <div>
+                                                                <h3 className="text-sm font-bold text-red-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                                                    <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                                                                    Banned / Abuse ({bannedKeys.length})
+                                                                </h3>
+                                                                <div className="grid gap-4">
+                                                                    {bannedKeys.map(renderKeyCard)}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Suspended Keys Section */}
+                                                        {suspendedKeys.length > 0 && (
+                                                            <div>
+                                                                <h3 className="text-sm font-bold text-orange-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                                                    <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+                                                                    Suspended ({suspendedKeys.length})
+                                                                </h3>
+                                                                <div className="grid gap-4">
+                                                                    {suspendedKeys.map(renderKeyCard)}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Revoked Keys Section */}
+                                                        {revokedKeys.length > 0 && (
+                                                            <div>
+                                                                <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                                                    <div className="w-2 h-2 rounded-full bg-zinc-500"></div>
+                                                                    Revoked ({revokedKeys.length})
+                                                                </h3>
+                                                                <div className="grid gap-4">
+                                                                    {revokedKeys.map(renderKeyCard)}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* No Keys Message */}
+                                                        {apiKeys.length === 0 && (
+                                                            <div className="text-center py-12 text-zinc-500">No API keys found.</div>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
+                                        </>
                                     )}
                                 </div>
                             </>
@@ -1326,7 +1460,7 @@ export default function DashboardPage() {
                                 {quotaUser?.account_status === 'banned' ? (
                                     <button
                                         type="button"
-                                        onClick={handleUnbanUser}
+                                        onClick={() => setConfirmAction('UNBAN')}
                                         className="w-full bg-green-600/20 hover:bg-green-600/30 text-green-400 border border-green-500/50 font-bold py-3 rounded-xl transition-all"
                                     >
                                         Unban Account
@@ -1341,13 +1475,13 @@ export default function DashboardPage() {
                                         />
                                         <button
                                             type="button"
-                                            onClick={handleBanUser}
+                                            onClick={() => setConfirmAction('BAN')}
                                             className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 font-bold py-3 rounded-xl transition-all"
                                         >
                                             Ban Account
                                         </button>
                                         <div className="text-center">
-                                            <button onClick={handleSuspendUser} className="text-xs text-zinc-500 hover:text-zinc-300 underline">Just suspend quota (soft block)</button>
+                                            <button onClick={() => setConfirmAction('SUSPEND')} className="text-xs text-zinc-500 hover:text-zinc-300 underline">Just suspend quota (soft block)</button>
                                         </div>
                                     </div>
                                 )}
@@ -1494,7 +1628,7 @@ export default function DashboardPage() {
                                 </div>
 
                                 <div className="flex gap-3 pt-4 border-t border-white/10">
-                                    <button type="button" onClick={handleSuspendUser} className="flex-1 py-3 px-4 rounded-xl bg-red-500/10 text-red-500 font-bold hover:bg-red-500/20 border border-red-500/20 transition-all text-sm">Suspend User</button>
+                                    <button type="button" onClick={() => setConfirmAction('SUSPEND')} className="flex-1 py-3 px-4 rounded-xl bg-red-500/10 text-red-500 font-bold hover:bg-red-500/20 border border-red-500/20 transition-all text-sm">Suspend User</button>
                                     <button type="button" onClick={handleRestoreQuota} className="flex-1 py-3 px-4 rounded-xl bg-white/5 text-zinc-400 font-bold hover:text-white hover:bg-white/10 transition-all text-sm">Restore Default</button>
                                 </div>
 
@@ -1508,7 +1642,7 @@ export default function DashboardPage() {
                                 {quotaUser?.account_status === 'banned' ? (
                                     <button
                                         type="button"
-                                        onClick={handleUnbanUser}
+                                        onClick={() => setConfirmAction('UNBAN')}
                                         className="w-full bg-green-600/20 hover:bg-green-600/30 text-green-400 border border-green-500/50 font-bold py-3 rounded-xl transition-all"
                                     >
                                         Unban Account
@@ -1523,7 +1657,7 @@ export default function DashboardPage() {
                                         />
                                         <button
                                             type="button"
-                                            onClick={handleBanUser}
+                                            onClick={() => setConfirmAction('BAN')}
                                             className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 font-bold py-3 rounded-xl transition-all"
                                         >
                                             Ban Account
@@ -1535,6 +1669,20 @@ export default function DashboardPage() {
                     </div>
                 )}
             </AnimatePresence>
+
+            <ConfirmationModal
+                isOpen={!!confirmAction}
+                onClose={() => setConfirmAction(null)}
+                onConfirm={executeConfirmAction}
+                title={confirmAction === 'BAN' ? 'Ban User' : confirmAction === 'UNBAN' ? 'Unban User' : 'Suspend User'}
+                message={
+                    confirmAction === 'BAN' ? "Are you sure you want to BAN this user? They will be immediately blocked from the platform." :
+                        confirmAction === 'UNBAN' ? "Are you sure you want to UNBAN this user? Their access will be restored." :
+                            "Are you sure you want to SUSPEND this user? Their quota will be set to 0, effectively blocking API access."
+                }
+                confirmText={confirmAction === 'BAN' ? 'Ban User' : confirmAction === 'UNBAN' ? 'Restore Access' : 'Suspend User'}
+                type={confirmAction === 'UNBAN' ? 'info' : 'danger'}
+            />
 
             {/* Generic Detail Slider */}
             <AnimatePresence>
@@ -1720,8 +1868,30 @@ export default function DashboardPage() {
                                         </div>
 
                                         <div>
-                                            <label className="text-xs font-bold text-zinc-500 uppercase">Owner ID</label>
-                                            <div className="bg-black/30 p-3 rounded-lg border border-white/5 font-mono text-zinc-300 break-all">{detailItem.data.owner_id || detailItem.data.user_id}</div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase">Owner Information</label>
+                                            <div className="bg-black/30 p-3 rounded-lg border border-white/5 space-y-2">
+                                                {detailItem.data.owner_wallet_address && (
+                                                    <div>
+                                                        <div className="text-[10px] text-zinc-500 uppercase">Wallet</div>
+                                                        <div className="font-mono text-zinc-300 break-all text-sm">{detailItem.data.owner_wallet_address}</div>
+                                                    </div>
+                                                )}
+                                                {detailItem.data.owner_email && (
+                                                    <div>
+                                                        <div className="text-[10px] text-zinc-500 uppercase">Email</div>
+                                                        <div className="font-mono text-zinc-300 break-all text-sm">{detailItem.data.owner_email}</div>
+                                                    </div>
+                                                )}
+                                                {detailItem.data.owner_user_id && (
+                                                    <div>
+                                                        <div className="text-[10px] text-zinc-500 uppercase">User ID</div>
+                                                        <div className="font-mono text-zinc-400 break-all text-xs">{detailItem.data.owner_user_id}</div>
+                                                    </div>
+                                                )}
+                                                {!detailItem.data.owner_wallet_address && !detailItem.data.owner_email && !detailItem.data.owner_user_id && (
+                                                    <div className="text-zinc-500 text-sm italic">No owner information available</div>
+                                                )}
+                                            </div>
                                         </div>
 
                                         <div>

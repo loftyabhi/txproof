@@ -163,6 +163,100 @@ export class WebhookService {
         webhookLogger.info('Webhook deleted', { webhookId: id });
     }
 
+    /**
+     * Test a webhook by sending a sample event
+     */
+    async testWebhook(id: string, apiKeyId: string) {
+        // 1. Fetch webhook
+        const { data: webhook, error } = await supabase
+            .from('webhooks')
+            .select('*')
+            .eq('id', id)
+            .eq('api_key_id', apiKeyId)
+            .single();
+
+        if (error || !webhook) {
+            throw new Error('Webhook not found');
+        }
+
+        // 2. Create sample payload
+        const samplePayload = {
+            id: `test_${Date.now()}`,
+            type: 'bill.completed',
+            created_at: new Date().toISOString(),
+            data: {
+                bill_id: 'bill_test_123456',
+                transaction_hash: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+                chain_id: 8453,
+                status: 'completed',
+                amount: '1000000000000000000',
+                currency: 'ETH',
+                recipient: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+                timestamp: new Date().toISOString()
+            }
+        };
+
+        // 3. Decrypt secret for signing
+        const secret = decryptSecret(
+            webhook.secret_encrypted,
+            webhook.secret_iv,
+            webhook.secret_tag
+        );
+
+        // 4. Sign payload
+        const signature = signWebhookPayload(samplePayload, secret);
+
+        // 5. Send HTTP request
+        const startTime = Date.now();
+        try {
+            const response = await axios.post(webhook.url, samplePayload, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-TxProof-Signature': signature,
+                    'X-TxProof-Event-Type': 'bill.completed',
+                    'User-Agent': 'TxProof-Webhooks/1.0'
+                },
+                timeout: REQUEST_TIMEOUT_MS,
+                validateStatus: () => true // Don't throw on any status
+            });
+
+            const responseTime = Date.now() - startTime;
+
+            webhookLogger.info('Test webhook sent', {
+                webhookId: id,
+                url: webhook.url,
+                statusCode: response.status,
+                responseTime
+            });
+
+            return {
+                success: response.status >= 200 && response.status < 300,
+                statusCode: response.status,
+                responseTime,
+                payload: samplePayload,
+                response: typeof response.data === 'string'
+                    ? response.data
+                    : JSON.stringify(response.data)
+            };
+
+        } catch (error: any) {
+            const responseTime = Date.now() - startTime;
+
+            webhookLogger.error('Test webhook failed', {
+                webhookId: id,
+                url: webhook.url,
+                error: error.message
+            });
+
+            return {
+                success: false,
+                error: error.message || 'Network error',
+                responseTime,
+                payload: samplePayload
+            };
+        }
+    }
+
     // --- Event Dispatch & Delivery ---
 
     /**

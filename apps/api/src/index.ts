@@ -153,10 +153,9 @@ const setupPublicRoutes = (app: express.Application) => {
         }
     });
 
-    // 4. Get Bill JSON Data (Restricted Public Fallback)
-    app.get('/api/v1/bills/:billId/data', hybridAuthWithTracking, async (req: Request, res: Response) => {
+    // 4. Get Bill JSON Data (Public with Rate Limiting)
+    app.get('/api/v1/bills/:billId/data', publicRateLimiter, async (req: Request, res: Response) => {
         const { billId } = req.params;
-        const hybridReq = req as any; // Access isPublicRequest
         // Normalization: Canonical ID is uppercase BILL-
         // Windows Dev environments or some browsers might lowercase the URL
         let jsonKey = billId;
@@ -166,7 +165,7 @@ const setupPublicRoutes = (app: express.Application) => {
         jsonKey += '.json';
 
         try {
-            // 1. Storage Check (Allowed for PUBLIC + AUTHED)
+            // 1. Storage Check (Public Access)
             const { data } = await supabase.storage.from('receipts').download(jsonKey);
             if (data) {
                 const text = await data.text();
@@ -174,52 +173,13 @@ const setupPublicRoutes = (app: express.Application) => {
                 return;
             }
 
-            // [HARDENING] If Public, STOP HERE. No expensive DB queries or Regen.
-            if (hybridReq.isPublicRequest) {
-                logger.warn('Public fallback denied for heavy operation', { billId: jsonKey });
-                res.status(404).json({ code: 'NOT_FOUND', error: 'Bill data not found (Login to regenerate)' });
-                return;
-            }
-
-            // [...] Authenticated Logic (DB Fallback, Regen) continues below...
-            // Note: Reuse original logic block but now strictly guarded
-            logger.info('Authenticated user storage miss, starting DB fallback', { billId: jsonKey });
-
-            // ... (Insert original DB/Regen logic here via BillService) ...
-            // For brevity in replacement, re-implementing the core logic:
-
-            const cleanId = billId.replace('.json', '');
-            const parts = cleanId.split('-');
-
-            if (parts.length >= 4 && parts[0].toUpperCase() === 'BILL') {
-                // ... DB Fallback Code ...
-                const chainId = parseInt(parts[1]);
-                const shortHash = parts[3];
-                if (!isNaN(chainId) && shortHash) {
-                    const { data: dbBill } = await supabase.from('bills').select('bill_json').eq('chain_id', chainId).ilike('tx_hash', `${shortHash}%`).maybeSingle();
-                    if (dbBill?.bill_json) {
-                        res.json(dbBill.bill_json);
-                        // Cache Repair (Async)
-                        // ...
-                        return;
-                    }
-                }
-            }
-
-            // Regen Fallback
-            try {
-                await billService.regenerateFromId(cleanId);
-                const { data: retryData } = await supabase.storage.from('receipts').download(jsonKey);
-                if (retryData) {
-                    const text = await retryData.text();
-                    res.json(JSON.parse(text));
-                    return;
-                }
-            } catch (e: any) {
-                console.error(e);
-            }
-
-            res.status(404).json({ code: 'NOT_FOUND', error: 'Bill data not found' });
+            // 2. If not in storage, return 404
+            // Public users cannot trigger regeneration - they must use the authenticated flow
+            logger.warn('Bill data not found in storage', { billId: jsonKey });
+            res.status(404).json({
+                code: 'NOT_FOUND',
+                error: 'Receipt not found. Please generate it first via the dashboard.'
+            });
 
         } catch (err: any) {
             console.error(err);

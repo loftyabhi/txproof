@@ -12,6 +12,7 @@ import { useAccount, useDisconnect } from 'wagmi';
 
 import { toast } from 'sonner';
 import { ProfileModal } from '@/components/console/ProfileModal';
+import { ConfirmationModal } from '@/components/ui/ConfirmationModal';
 
 export function DevelopersClient() {
     const { isAuthenticated, isLoading: isAuthLoading, token, logout } = useConsoleAuth();
@@ -27,6 +28,7 @@ export function DevelopersClient() {
     const [showNewKey, setShowNewKey] = useState<string | null>(null);
     const [userProfile, setUserProfile] = useState<any>(null);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
+    const [bannedReason, setBannedReason] = useState<string | null>(null);
 
     const [isSystemOperational, setIsSystemOperational] = useState(true);
 
@@ -66,6 +68,13 @@ export function DevelopersClient() {
     // Handle Create Key
     const handleCreateKey = async (name: string) => {
         if (!token) return;
+
+        // Check if account is suspended
+        if (userProfile?.account_status === 'suspended') {
+            toast.error('Cannot create API keys while account is suspended. Please contact support.');
+            return;
+        }
+
         try {
             const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/user/keys`, {
                 method: 'POST',
@@ -91,19 +100,26 @@ export function DevelopersClient() {
         }
     };
 
-    // Handle Revoke
-    const handleRevokeKey = async (id: string) => {
-        if (!confirm('Are you sure you want to revoke this key? This cannot be undone.')) return;
-        if (!token) return;
+    const [revokeKeyId, setRevokeKeyId] = useState<string | null>(null);
+
+    // Initial Trigger
+    const handleRevokeClick = (id: string) => {
+        setRevokeKeyId(id);
+    };
+
+    // Actual Logic
+    const confirmRevokeKey = async () => {
+        if (!revokeKeyId || !token) return;
 
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/user/keys/${id}/revoke`, {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/user/keys/${revokeKeyId}/revoke`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` }
             });
 
             if (res.ok) {
                 toast.success('API Key revoked');
+                setRevokeKeyId(null); // Close modal
                 await fetchData();
             } else {
                 throw new Error('Revocation failed');
@@ -147,7 +163,7 @@ export function DevelopersClient() {
     }
 
     if (!isAuthenticated) {
-        return <ConsoleLogin />;
+        return <ConsoleLogin bannedReason={bannedReason} setBannedReason={setBannedReason} />;
     }
 
     return (
@@ -238,8 +254,18 @@ export function DevelopersClient() {
                             <KeyManager
                                 keys={keys}
                                 onCreate={handleCreateKey}
-                                onRevoke={handleRevokeKey}
+                                onRevoke={handleRevokeClick}
                                 isLoading={isLoadingData}
+                                userAccountStatus={userProfile?.account_status}
+                            />
+                            <ConfirmationModal
+                                isOpen={!!revokeKeyId}
+                                onClose={() => setRevokeKeyId(null)}
+                                onConfirm={confirmRevokeKey}
+                                title="Revoke API Key"
+                                message="Are you sure you want to revoke this key? This action cannot be undone and any applications using this key will immediately lose access."
+                                confirmText="Revoke Key"
+                                cancelText="Keep Key"
                             />
                         </div>
                     )}

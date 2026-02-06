@@ -116,7 +116,7 @@ export class AuthService {
         // 3. Status Check
         const { data: user, error: fetchError } = await supabase
             .from('users')
-            .select('id, wallet_address, account_status')
+            .select('id, wallet_address, account_status, ban_reason')
             .eq('id', userId)
             .single();
 
@@ -125,7 +125,9 @@ export class AuthService {
         }
 
         if (user.account_status !== 'active') {
-            throw new Error(`Login failed: Account is ${user.account_status}. Please contact support.`);
+            // Include ban_reason if available
+            const reason = user.ban_reason || 'Please contact support.';
+            throw new Error(`Account is ${user.account_status}. ${reason}`);
         }
 
         // 4. Issue Token

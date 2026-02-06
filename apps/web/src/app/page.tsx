@@ -4,7 +4,7 @@ import { BillGenerator } from '@/components/home/BillGenerator';
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white font-sans selection:bg-purple-500/30 overflow-x-hidden">
+    <div className="flex-grow w-full bg-[#0a0a0a] text-white font-sans selection:bg-purple-500/30 overflow-x-hidden">
       <Navbar />
 
       <main id="main-content" className="relative pt-32 pb-20 px-6">

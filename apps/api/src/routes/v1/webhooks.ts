@@ -92,4 +92,21 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
     }
 });
 
+// POST /api/v1/webhooks/:id/test
+router.post('/:id/test', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const apiKeyId = await resolveApiKeyId(req as AuthenticatedRequest);
+        const result = await webhookService.testWebhook(req.params.id, apiKeyId);
+        res.json(result);
+    } catch (e: any) {
+        if (e.message.includes('No active API key')) {
+            res.status(400).json({ error: 'No active API key found.' });
+        } else if (e.message.includes('not found')) {
+            res.status(404).json({ error: 'Webhook not found' });
+        } else {
+            res.status(500).json({ error: e.message || 'Test failed' });
+        }
+    }
+});
+
 export default router;
