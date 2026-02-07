@@ -30,6 +30,37 @@ export class SoftQueueService {
             .single();
 
         if (existing) {
+            // [ENTERPRISE] Instant Webhook on Cache Hit
+            // If job is completed, and this specific API Key hasn't received a webhook yet, send it now.
+            if (existing.status === 'completed' && apiKeyId) {
+                const alreadyDelivered = await this.webhookService.hasDelivery(apiKeyId, existing.id, 'bill.completed');
+
+                if (!alreadyDelivered) {
+                    console.log(`[SoftQueue] Catch-up webhook for apiKey ${apiKeyId} on job ${existing.id}`);
+
+                    // Fetch result to send in payload
+                    const status = await this.getJobStatus(existing.id);
+                    if (status && status.result) {
+                        // Dispatch synthetic event
+                        await this.webhookService.dispatch('bill.completed', {
+                            id: existing.id,
+                            bill_id: existing.bill_id,
+                            tx_hash: existing.tx_hash,
+                            transaction_hash: existing.tx_hash,
+                            chain_id: existing.chain_id,
+                            status: 'completed',
+                            duration_ms: existing.duration_ms || 0,
+                            txHash: existing.tx_hash,
+                            billId: existing.bill_id,
+                            synthetic: true // Internal flag
+                        }, apiKeyId);
+
+                        // Mark as delivered to prevent future duplicates
+                        await this.webhookService.recordDelivery(apiKeyId, existing.id, 'bill.completed');
+                    }
+                }
+            }
+
             return {
                 jobId: existing.id,
                 status: existing.status,

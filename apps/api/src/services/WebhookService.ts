@@ -235,6 +235,46 @@ export class WebhookService {
         return { webhook: data, secret };
     }
 
+    // --- Delivery Ledger (Idempotency) ---
+
+    /**
+     * Check if a specific event type has already been delivered for this job/tx to this API key.
+     * Used to prevent duplicate "completion" signals on cache hits.
+     */
+    async hasDelivery(apiKeyId: string, jobId: string, eventType: string): Promise<boolean> {
+        const { data } = await supabase
+            .from('webhook_deliveries')
+            .select('id')
+            .eq('api_key_id', apiKeyId)
+            .eq('job_id', jobId)
+            .eq('event_type', eventType)
+            .single();
+
+        return !!data;
+    }
+
+    /**
+     * Record a successful delivery (or dispatch) to the ledger.
+     */
+    async recordDelivery(apiKeyId: string, jobId: string, eventType: string, webhookId?: string) {
+        try {
+            await supabase
+                .from('webhook_deliveries')
+                .insert({
+                    api_key_id: apiKeyId,
+                    job_id: jobId,
+                    event_type: eventType,
+                    webhook_id: webhookId || null,
+                    delivered_at: new Date().toISOString()
+                });
+        } catch (error: any) {
+            // Ignore unique constraint violations (race conditions are fine, means already done)
+            if (error.code !== '23505') {
+                webhookLogger.warn('Failed to record webhook delivery ledger', { apiKeyId, jobId, error: error.message });
+            }
+        }
+    }
+
     /**
      * Test a webhook by sending a sample event
      */

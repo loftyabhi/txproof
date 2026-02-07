@@ -140,6 +140,17 @@ export interface BillViewModel {
     FRONTEND_URL: string;
     DISCLAIMER_URL: string;
     CONTACT_URL: string;
+
+    // Enterprise Integrity
+    RECEIPT_HASH?: string;
+    HASH_ALGO?: string;
+    BRANDING?: {
+        logoUrl: string;
+        primaryColor: string;
+        accentColor: string;
+        footerText: string;
+        font: string;
+    };
 }
 
 
@@ -432,44 +443,8 @@ export class BillService {
                 forcedBillId: billId
             });
 
-            // 4. Skip PDF Rendering (Client-Side Flow)
-            // const pdfBuffer = await this.renderPdfBuffer(billData);
-
-            // 5. Upload to Supabase (JSON Only)
-            billLogger.info('Uploading bill JSON to storage', { billId });
-
-            // Upload JSON (Metadata for future 0-RPC retrieval)
-            const jsonBuffer = Buffer.from(JSON.stringify(billData));
-            await supabase.storage
-                .from('receipts')
-                .upload(jsonKey, jsonBuffer, {
-                    contentType: 'application/json',
-                    upsert: true
-                });
-
-            // [CRITICAL] Cryptographic Proof - MUST HAPPEN BEFORE BRANDING
-            // This ensures hash is deterministic and branding doesn't affect proof
-            let receiptHash: string;
-            try {
-                // Compute hash using canonical JSON serialization (RFC 8785)
-                receiptHash = computeReceiptHash(billData);
-                logger.info('[BillService] Receipt hash computed', {
-                    billId,
-                    hash: receiptHash.substring(0, 10) + '...'
-                });
-            } catch (error: any) {
-                logger.error('[BillService] Hash computation failed', {
-                    billId,
-                    error: error.message
-                });
-                throw new Error('Failed to compute receipt hash');
-            }
-
-            // Save to DB FIRST with hash (ensures immutability)
-            await this.saveToDb(txHash, chainId, userAddress, billData, receipt.status === 1, receiptHash);
-
-            // [NEW FEATURE] Apply Branding Template AFTER hashing
-            // Branding is presentation-only and doesn't affect cryptographic proof
+            // [NEW FEATURE] Apply Branding Template BEFORE hashing and saving
+            // This ensures consistent presentation across all storage mediums
             if (request.apiKeyId) {
                 try {
                     const template = await this.templateService.getTemplate(request.apiKeyId);
@@ -490,9 +465,45 @@ export class BillService {
                 }
             }
 
-            // Attach hash metadata AFTER hashing (for client verification)
+            // [CRITICAL] Cryptographic Proof - MUST HAPPEN BEFORE STORAGE
+            // This ensures hash is deterministic and included in all storage layers
+            let receiptHash: string;
+            try {
+                // Compute hash using canonical JSON serialization (RFC 8785)
+                receiptHash = computeReceiptHash(billData);
+                logger.info('[BillService] Receipt hash computed', {
+                    billId,
+                    hash: receiptHash.substring(0, 10) + '...'
+                });
+            } catch (error: any) {
+                logger.error('[BillService] Hash computation failed', {
+                    billId,
+                    error: error.message
+                });
+                throw new Error('Failed to compute receipt hash');
+            }
+
+            // Attach hash metadata (for verification)
             (billData as any).RECEIPT_HASH = receiptHash;
             (billData as any).HASH_ALGO = 'keccak256';
+
+            // [ENTERPRISE] Freeze Object to prevent accidental mutation
+            Object.freeze(billData);
+
+            // 5. Upload to Supabase (JSON Only) - Uses FINALIZED object
+            billLogger.info('Uploading bill JSON to storage', { billId });
+
+            // Upload JSON (Metadata for future 0-RPC retrieval)
+            const jsonBuffer = Buffer.from(JSON.stringify(billData));
+            await supabase.storage
+                .from('receipts')
+                .upload(jsonKey, jsonBuffer, {
+                    contentType: 'application/json',
+                    upsert: true
+                });
+
+            // Save to DB with hash (ensures immutability and consistency)
+            await this.saveToDb(txHash, chainId, userAddress, billData, receipt.status === 1, receiptHash);
 
             // Trigger Cleanup (Async/Fire-and-forget)
             this.cleanupOldBills().catch(err => logger.error('Bill cleanup failed', { error: err.message }));
