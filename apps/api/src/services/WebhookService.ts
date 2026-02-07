@@ -277,11 +277,12 @@ export class WebhookService {
 
         // 4. Sign payload
         const signature = signWebhookPayload(samplePayload, secret);
+        const payloadString = canonicalStringify(samplePayload);
 
         // 5. Send HTTP request
         const startTime = Date.now();
         try {
-            const response = await axios.post(webhook.url, samplePayload, {
+            const response = await axios.post(webhook.url, payloadString, {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-TxProof-Signature': signature,
@@ -585,11 +586,14 @@ export class WebhookService {
             const secret = await this.getVerifiedSecret(webhook);
 
             // 2. Sign payload with canonical JSON + timestamp
-            const signature = signWebhookPayload(event.payload, secret);
+            // CRITICAL: We must send the EXACT string we signed. 
+            // JSON.stringify() is not deterministic (spacing, key order), so we use canonicalStringify
+            const payloadString = canonicalStringify(event.payload);
+            const signature = signWebhookPayload(event.payload, secret); // This also uses canonicalStringify internally
 
             // 3. Send HTTP request with timeout
             const startTime = Date.now();
-            const response = await axios.post(webhook.url, event.payload, {
+            const response = await axios.post(webhook.url, payloadString, {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-TxProof-Signature': signature,
