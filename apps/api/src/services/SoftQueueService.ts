@@ -33,10 +33,10 @@ export class SoftQueueService {
             // [ENTERPRISE] Instant Webhook on Cache Hit
             // If job is completed, and this specific API Key hasn't received a webhook yet, send it now.
             if (existing.status === 'completed' && apiKeyId) {
-                const alreadyDelivered = await this.webhookService.hasDelivery(apiKeyId, existing.id, 'bill.completed');
+                const deliveryCount = await this.webhookService.getDeliveryCount(apiKeyId, existing.id, 'bill.completed');
 
-                if (!alreadyDelivered) {
-                    console.log(`[SoftQueue] Catch-up webhook for apiKey ${apiKeyId} on job ${existing.id}`);
+                if (deliveryCount < 3) {
+                    console.log(`[SoftQueue] Catch-up webhook (${deliveryCount + 1}/3) for apiKey ${apiKeyId} on job ${existing.id}`);
 
                     // Fetch result to send in payload
                     const status = await this.getJobStatus(existing.id);
@@ -52,7 +52,8 @@ export class SoftQueueService {
                             duration_ms: existing.duration_ms || 0,
                             txHash: existing.tx_hash,
                             billId: existing.bill_id,
-                            synthetic: true // Internal flag
+                            synthetic: true, // Internal flag
+                            request_index: deliveryCount // 0, 1, or 2
                         }, apiKeyId);
 
                         // Mark as delivered to prevent future duplicates
@@ -204,7 +205,9 @@ export class SoftQueueService {
                         // Maintain camelCase for top-level spread in WebhookService
                         txHash: job.tx_hash,
                         billId: result.billData.BILL_ID
-                    }, job.api_key_id).catch(err => console.error('[Webhook] Dispatch Error:', err));
+                    }, job.api_key_id)
+                        .then(() => this.webhookService.recordDelivery(job.api_key_id!, job.id, 'bill.completed'))
+                        .catch(err => console.error('[Webhook] Dispatch Error:', err));
                 }
 
             } catch (err: any) {

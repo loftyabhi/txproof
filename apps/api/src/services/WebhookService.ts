@@ -241,16 +241,15 @@ export class WebhookService {
      * Check if a specific event type has already been delivered for this job/tx to this API key.
      * Used to prevent duplicate "completion" signals on cache hits.
      */
-    async hasDelivery(apiKeyId: string, jobId: string, eventType: string): Promise<boolean> {
-        const { data } = await supabase
+    async getDeliveryCount(apiKeyId: string, jobId: string, eventType: string): Promise<number> {
+        const { count } = await supabase
             .from('webhook_deliveries')
-            .select('id')
+            .select('*', { count: 'exact', head: true })
             .eq('api_key_id', apiKeyId)
             .eq('job_id', jobId)
-            .eq('event_type', eventType)
-            .single();
+            .eq('event_type', eventType);
 
-        return !!data;
+        return count || 0;
     }
 
     /**
@@ -268,10 +267,7 @@ export class WebhookService {
                     delivered_at: new Date().toISOString()
                 });
         } catch (error: any) {
-            // Ignore unique constraint violations (race conditions are fine, means already done)
-            if (error.code !== '23505') {
-                webhookLogger.warn('Failed to record webhook delivery ledger', { apiKeyId, jobId, error: error.message });
-            }
+            webhookLogger.warn('Failed to record webhook delivery ledger', { apiKeyId, jobId, error: error.message });
         }
     }
 
@@ -412,7 +408,9 @@ export class WebhookService {
 
             // 2. Create idempotent event ID
             const entityId = payload.id || payload.txHash || payload.billId || Date.now().toString();
-            const eventId = `evt_${entityId}_${eventType}`;
+            // If request_index is provided (for catch-ups), include it in eventId to bypass uniqueness constraint
+            const requestSuffix = payload.request_index ? `_${payload.request_index}` : '';
+            const eventId = `evt_${entityId}_${eventType}${requestSuffix}`;
 
             // 3. Insert event records for each webhook
             const inserts = hooks.map(h => ({
