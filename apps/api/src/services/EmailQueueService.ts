@@ -96,7 +96,19 @@ export class EmailQueueService {
             const { data: jobs, error } = await supabase.rpc('claim_next_email_job');
 
             if (error) {
-                logger.error('Error claiming email job', error);
+                const message = (error as any).message || 'Unknown error';
+                const details = (error as any).details || '';
+                const hint = (error as any).hint || '';
+
+                // If it's a 500 HTML error from Cloudflare, it often starts with <!DOCTYPE
+                const isHtml = typeof message === 'string' && message.trim().startsWith('<!DOCTYPE');
+
+                logger.error('Error claiming email job', {
+                    message: isHtml ? 'Received HTML error response (likely 500 from Cloudflare)' : message,
+                    details,
+                    hint,
+                    errorRaw: isHtml ? undefined : error // Avoid logging massive HTML blobs
+                });
                 return;
             }
 

@@ -38,6 +38,14 @@ async function runSmokeTests() {
             throw new Error('claim_next_bill_job_v2 missing');
         }
 
+        // Test 4: Verify email claim RPC exists
+        const claimEmailFn = await sql`SELECT 1 FROM pg_proc WHERE proname = 'claim_next_email_job'`;
+        if (claimEmailFn.length > 0) {
+            console.log('✅ claim_next_email_job exists');
+        } else {
+            throw new Error('claim_next_email_job missing');
+        }
+
         console.log('🎉 All schema smoke tests passed!');
     } catch (err) {
         console.error('❌ Smoke test failure:', err);
