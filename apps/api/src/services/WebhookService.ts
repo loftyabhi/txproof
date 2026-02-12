@@ -308,7 +308,8 @@ export class WebhookService {
         const secret = decryptSecret(
             webhook.secret_encrypted,
             webhook.secret_iv,
-            webhook.secret_tag
+            webhook.secret_tag,
+            webhook.encryption_key_version || 'v1'
         );
 
         // 4. Sign payload

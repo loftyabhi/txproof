@@ -1,6 +1,8 @@
 -- Migration: 012_email_job_claim_rpc.sql
 -- Goal: Define the claim_next_email_job function to atomically claim pending email jobs with priority support.
 
+DROP FUNCTION IF EXISTS claim_next_email_job();
+
 CREATE OR REPLACE FUNCTION claim_next_email_job()
 RETURNS TABLE (
     id UUID,

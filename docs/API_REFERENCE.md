@@ -60,7 +60,7 @@ curl -H "X-API-Key: YOUR_API_KEY" https://api.txproof.xyz/api/v1/bills/job/job_1
 {
   "id": "job_12345",
   "state": "completed",
-  "data": { "billId": "BILL-8453-..." },
+  "data": "https://storage.txproof.xyz/receipts/BILL-8453-....json",
   "pdfUrl": "https://...",
   "queuePosition": 0
 }

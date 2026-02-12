@@ -243,7 +243,7 @@ const setupPrivateRoutes = (app: express.Application) => {
             res.json({
                 id: status.id,
                 state: status.state,
-                data: status.result?.billData || null,
+                data: status.result?.billDataUrl || null, // Updated to pass URL
                 pdfUrl: status.result?.pdfPath || null,
                 error: status.error,
                 queuePosition: status.queuePosition,

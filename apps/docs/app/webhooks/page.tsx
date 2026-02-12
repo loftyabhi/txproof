@@ -109,7 +109,8 @@ export default function Webhooks() {
     "status": "completed",
     "amount": "1000000000000000000",
     "currency": "ETH", 
-    "pdf_url": "https://storage.txproof.xyz/receipts/..."
+    "pdf_url": "https://storage.txproof.xyz/receipts/...",
+    "billDataUrl": "https://storage.txproof.xyz/receipts/bill_123456.json"
   },
   "txHash": "0x5d962...",
   "timestamp": 1716300000

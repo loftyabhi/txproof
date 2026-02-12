@@ -48,7 +48,11 @@ const poll = async (id) => {
   
   if (data.state === 'completed') {
     console.log("PDF Ready:", data.pdfUrl);
-    console.log("Bill Data:", data.data);
+    // data.data is now a URL to the JSON file
+    console.log("Bill Data URL:", data.data);
+    
+    // Fetch if needed:
+    // const billJson = await (await fetch(data.data)).json();
   } else if (data.state === 'failed') {
     console.error("Job Failed:", data.error);
   } else {
@@ -77,10 +81,9 @@ curl -X POST https://api.txproof.xyz/api/v1/bills/resolve \\
 curl https://api.txproof.xyz/api/v1/bills/job/job_123
 
 # Response (Completed):
-# {
 #   "state": "completed",
 #   "pdfUrl": "https://storage.supabase.co/...",
-#   "data": { ... }
+#   "data": "https://storage.supabase.co/..."
 # }
 `;
 

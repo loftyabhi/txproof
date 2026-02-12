@@ -161,7 +161,21 @@ export function BillGenerator() {
                     } else if (jobData.state === 'completed') {
                         clearInterval(pollInterval);
                         setPdfUrl(jobData.pdfUrl); // Already includes /print/bill/...
-                        setBillData(jobData.data);
+
+                        // Handle Storage URL optimization (String URL vs Legacy JSON Object)
+                        let finalBillData = jobData.data;
+                        if (typeof jobData.data === 'string' && jobData.data.startsWith('http')) {
+                            try {
+                                const storageRes = await fetch(jobData.data);
+                                if (storageRes.ok) {
+                                    finalBillData = await storageRes.json();
+                                }
+                            } catch (e) {
+                                console.error('Failed to fetch bill data from storage', e);
+                            }
+                        }
+
+                        setBillData(finalBillData);
                         setLoading(false);
                         trackTxLookup(chainId.toString(), 'success');
                         toast.success("Documentation compiled successfully.", { id: toastId });

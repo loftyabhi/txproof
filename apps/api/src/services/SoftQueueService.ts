@@ -52,6 +52,7 @@ export class SoftQueueService {
                             duration_ms: existing.duration_ms || 0,
                             txHash: existing.tx_hash,
                             billId: existing.bill_id,
+                            billDataUrl: (status.result as any).billDataUrl,
                             synthetic: true, // Internal flag
                             request_index: deliveryCount // 0, 1, or 2
                         }, apiKeyId);
@@ -194,6 +195,8 @@ export class SoftQueueService {
 
                 // [Webhook] Dispatch Success
                 if (job.api_key_id) {
+                    const { data } = supabase.storage.from('receipts').getPublicUrl(`${result.billData.BILL_ID}.json`);
+
                     this.webhookService.dispatch('bill.completed', {
                         id: job.id,
                         bill_id: result.billData.BILL_ID,
@@ -204,7 +207,8 @@ export class SoftQueueService {
                         duration_ms: duration,
                         // Maintain camelCase for top-level spread in WebhookService
                         txHash: job.tx_hash,
-                        billId: result.billData.BILL_ID
+                        billId: result.billData.BILL_ID,
+                        billDataUrl: data.publicUrl
                     }, job.api_key_id)
                         .then(() => this.webhookService.recordDelivery(job.api_key_id!, job.id, 'bill.completed'))
                         .catch(err => console.error('[Webhook] Dispatch Error:', err));
@@ -302,25 +306,18 @@ export class SoftQueueService {
         }
 
         if (job.status === 'completed') {
-            const { data: billRecord } = await supabase
-                .from('bills')
-                .select('bill_json')
-                .eq('tx_hash', job.tx_hash)
-                .eq('chain_id', job.chain_id)
-                .single();
+            const { data } = supabase.storage
+                .from('receipts')
+                .getPublicUrl(`${job.bill_id}.json`);
 
-            if (billRecord && billRecord.bill_json) {
-                billData = billRecord.bill_json;
-            } else {
-                billData = { BILL_ID: job.bill_id, STATUS: 'completed' };
-            }
+            billData = data.publicUrl;
         }
 
         return {
             id: job.id,
             state: job.status,
             result: job.status === 'completed' ? {
-                billData: billData,
+                billDataUrl: billData,
                 pdfPath: `/print/bill/${job.bill_id}`,
                 duration_ms: job.duration_ms
             } : null,

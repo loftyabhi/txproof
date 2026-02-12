@@ -97,7 +97,7 @@ export default function Reference() {
                                 content: <CodeBlock language="json" code={`{
   "id": "job_123",
   "state": "completed",
-  "data": { "billId": "bill-1-0x123..." },
+  "data": "https://storage.txproof.xyz/receipts/bill-1-0x123.json",
   "pdfUrl": "https://storage.txproof.xyz/..."
 }`} />
                             },
