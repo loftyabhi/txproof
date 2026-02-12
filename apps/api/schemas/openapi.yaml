@@ -142,6 +142,83 @@ components:
           description: Optional structured context for the error.
           additionalProperties: true
 
+    # --- Domain Objects ---
+
+    ReceiptTemplate:
+      type: object
+      required:
+        - font_variant
+      properties:
+        logo_url:
+          type: string
+          nullable: true
+          description: Secure HTTPS URL to a logo image (png, jpg, svg). Max 5MB.
+        primary_color:
+          type: string
+          nullable: true
+          pattern: '^#[0-9a-fA-F]{6}$'
+          example: '#FF5733'
+        accent_color:
+          type: string
+          nullable: true
+          pattern: '^#[0-9a-fA-F]{6}$'
+          example: '#33FF57'
+        footer_text:
+          type: string
+          nullable: true
+          maxLength: 200
+        font_variant:
+          type: string
+          enum: [inter, roboto, mono]
+          default: inter
+
+    VerificationResult:
+      type: object
+      required:
+        - valid
+        - billId
+        - algorithm
+        - verified_at
+      properties:
+        valid:
+          type: boolean
+        billId:
+          type: string
+          format: uuid
+        algorithm:
+          type: string
+          example: keccak256
+        computedHash:
+          type: string
+        storedHash:
+          type: string
+        verified_at:
+          type: string
+          format: date-time
+
+    UserProfile:
+      type: object
+      required:
+        - id
+        - email
+        - monthly_quota
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        monthly_quota:
+          type: integer
+        is_email_verified:
+          type: boolean
+        wallet_address:
+          type: string
+
+
 
 
     Bill:
@@ -498,7 +575,96 @@ paths:
                     type: string
         '429':
           $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/InternalError'
+  # ----------------------------------------------------------------------------
+  # Templates
+  # ----------------------------------------------------------------------------
+  /templates:
+    get:
+      summary: Get Receipt Template
+      description: Retrieve the custom branding template for the authenticated API key.
+      tags: [Templates]
+      responses:
+        '200':
+          description: Current template.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiptTemplate'
+    post:
+      summary: Update Receipt Template
+      description: Create or update the custom branding template.
+      tags: [Templates]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReceiptTemplate'
+      responses:
+        '200':
+          description: Template updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiptTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ----------------------------------------------------------------------------
+  # Verification
+  # ----------------------------------------------------------------------------
+  /verify/receipt:
+    post:
+      summary: Verify Receipt Integrity
+      description: Cryptographically verify a receipt against its stored hash.
+      tags: [Verification]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [billId]
+              properties:
+                billId: { type: string, format: uuid }
+                expectedHash: { type: string }
+      responses:
+        '200':
+          description: Verification result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ----------------------------------------------------------------------------
+  # User & Keys
+  # ----------------------------------------------------------------------------
+  /me:
+    get:
+      summary: Get User Profile
+      tags: [User]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+
+  /usage:
+    get:
+      summary: Get Usage Metrics
+      tags: [Usage]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  quota_limit: { type: integer }
+                  quota_used: { type: integer }
+                  quota_remaining: { type: integer }
 
 

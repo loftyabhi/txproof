@@ -184,6 +184,36 @@ export default function Reference() {
             </div>
 
 
+            {/* --- TEMPLATES --- */}
+            <div className="space-y-6 pt-12">
+                <h2 className="text-2xl font-bold border-b pb-2">Custom Templates</h2>
+
+                {/* GET /api/v1/templates */}
+                <Endpoint method="GET" path="/api/v1/templates">
+                    <p className="text-muted-foreground">Retrieve your current branding configuration.</p>
+                </Endpoint>
+
+                {/* POST /api/v1/templates */}
+                <Endpoint method="POST" path="/api/v1/templates">
+                    <div className="space-y-6">
+                        <p className="text-muted-foreground leading-relaxed">
+                            Upload logo and set brand colors for your receipts.
+                        </p>
+                        <Tabs items={[
+                            {
+                                label: 'Request',
+                                value: 'req',
+                                content: <CodeBlock language="json" code={`{
+  "logo_url": "https://example.com/logo.png",
+  "primary_color": "#FF5733",
+  "footer_text": "Thank you for your business!"
+}`} />
+                            }
+                        ]} />
+                    </div>
+                </Endpoint>
+            </div>
+
             {/* --- VERIFICATION --- */}
             <div className="space-y-6 pt-12">
                 <h2 className="text-2xl font-bold border-b pb-2">Receipt Verification</h2>
@@ -213,6 +243,7 @@ export default function Reference() {
   "verified_at": "2024-03-20T10:00:00Z"
 }`} />
                         </div>
+
                     </div>
                 </Endpoint>
             </div>
@@ -240,6 +271,31 @@ export default function Reference() {
   }
 }`} />
                     </div>
+                </Endpoint>
+            </div>
+
+            {/* --- ACCOUNT & KEYS --- */}
+            <div className="space-y-6 pt-12">
+                <h2 className="text-2xl font-bold border-b pb-2">Account & Keys</h2>
+
+                {/* GET /api/v1/me */}
+                <Endpoint method="GET" path="/api/v1/me">
+                    <p className="text-muted-foreground">Get authenticated user profile and quota details.</p>
+                </Endpoint>
+
+                {/* GET /api/v1/keys */}
+                <Endpoint method="GET" path="/api/v1/keys">
+                    <p className="text-muted-foreground">List all active API keys.</p>
+                </Endpoint>
+
+                {/* POST /api/v1/keys */}
+                <Endpoint method="POST" path="/api/v1/keys">
+                    <p className="text-muted-foreground">Create a new API key.</p>
+                </Endpoint>
+
+                {/* POST /api/v1/keys/:id/revoke */}
+                <Endpoint method="POST" path="/api/v1/keys/:id/revoke">
+                    <p className="text-muted-foreground">Revoke an existing API key.</p>
                 </Endpoint>
             </div>
 

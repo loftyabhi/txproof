@@ -13,6 +13,7 @@ import { ContributionService } from './services/ContributionService';
 import { EmailQueueService } from './services/EmailQueueService';
 import { logger, createComponentLogger } from './lib/logger';
 import { supabase } from './lib/supabase';
+import { SUPPORTED_CHAINS, isSupportedChain } from './config/supportedChains';
 
 // Security Middleware
 import { hybridAuth, hybridAuthWithTracking } from './middleware/hybridAuth';
@@ -191,7 +192,10 @@ const setupPublicRoutes = (app: express.Application) => {
 // --- Schemas ---
 const billGenerateSchema = z.object({
     txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/, "Invalid Transaction Hash format"),
-    chainId: z.number().int().positive("Chain ID must be a positive integer"),
+    chainId: z.number().int().positive("Chain ID must be a positive integer")
+        .refine((val) => isSupportedChain(val), {
+            message: `Unsupported Chain ID. Supported chains are: ${SUPPORTED_CHAINS.join(', ')}`
+        }),
     connectedWallet: z.string().optional()
 });
 

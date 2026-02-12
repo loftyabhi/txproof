@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { PriceOracleService } from './PriceOracleService';
 import { TemplateService } from './TemplateService'; // [NEW]
+import { RPC_URLS } from '../config/supportedChains';
 import { transactionClassifier, ClassificationResult, ExecutionType, TransactionEnvelopeType } from './TransactionClassifier';
 import { AdminService } from './AdminService';
 import { UserService } from './UserService';
@@ -214,16 +215,7 @@ export class BillService {
     private adminService: AdminService;
     private templateService: TemplateService; // [NEW]
 
-    private rpcs: { [key: number]: string } = {
-        1: 'https://eth.llamarpc.com',
-        8453: 'https://mainnet.base.org',
-        137: 'https://polygon-rpc.com',
-        11155111: 'https://rpc.sepolia.org',
-        42161: 'https://arb1.arbitrum.io/rpc',
-        10: 'https://mainnet.optimism.io',
-        56: 'https://bsc-dataseed.binance.org',
-        43114: 'https://api.avax.network/ext/bc/C/rpc'
-    };
+    private rpcs: { [key: number]: string } = RPC_URLS;
 
     private alchemyCallsMade = false;
 
