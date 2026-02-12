@@ -63,9 +63,26 @@ export class SoftQueueService {
                 }
             }
 
+            let responseData = null;
+
+            // If completed, fetch the full data to return immediately
+            if (existing.status === 'completed') {
+                const { data: billRecord } = await supabase
+                    .from('bills')
+                    .select('bill_json')
+                    .eq('tx_hash', txHash)
+                    .eq('chain_id', chainId)
+                    .single();
+
+                if (billRecord && billRecord.bill_json) {
+                    responseData = billRecord.bill_json;
+                }
+            }
+
             return {
                 jobId: existing.id,
                 status: existing.status,
+                data: responseData
             };
         }
 

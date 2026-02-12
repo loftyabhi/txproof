@@ -221,7 +221,8 @@ const setupPrivateRoutes = (app: express.Application) => {
                 success: true,
                 jobId: job.jobId,
                 status: job.status,
-                message: 'Request queued'
+                data: job.data || null, // Include data if cache hit
+                message: job.status === 'completed' ? 'Request completed (cached)' : 'Request queued'
             });
         } catch (error) { next(error); }
     });
