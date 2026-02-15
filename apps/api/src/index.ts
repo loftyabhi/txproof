@@ -93,6 +93,9 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 app.use(express.json());
 app.use(cookieParser() as any); // Type fix for Express 4.x compatibility
 
+// Serve static files from public directory (e.g., robots.txt)
+app.use(express.static(path.join(__dirname, '../public')));
+
 // Services
 const authService = new AuthService();
 const adminService = new AdminService();
