@@ -19,8 +19,9 @@ Trigger the generation of a cryptographic receipt for a blockchain transaction.
 ### Request Body
 | Field | Type | Description |
 |---|---|---|
-| `txHash` | string | The transaction hash (0x...) |
-| `chainId` | number | The blockchain Chain ID (e.g. 8453 for Base) |
+| `txHash` | string | The transaction hash (0x...) or Farcaster Cast Hash (0x + 40 hex) |
+| `type` | string | The type of transaction to generate a receipt for. Possible values: <br> - `TOKEN_TRANSFER`: Basic ERC-20 transfer <br> - `SWAP`: Token exchange (Uniswap, etc.) <br> - `SOCIAL_CAST`: Farcaster social publication (Resolved via Neynar) <br> - `CONTRACT_INTERACTION`: General smart contract call |
+| `chainId` | number | The blockchain Chain ID (e.g. 8453 for Base). For Farcaster casts, use any supported chain. |
 
 ### Example Request
 ```bash
@@ -32,6 +33,9 @@ curl -X POST https://api.txproof.xyz/api/v1/bills/resolve \
     "chainId": 8453
   }'
 ```
+
+> [!NOTE]
+> Farcaster cast hashes (40 characters) are supported and resolved via Farcaster Hubs. Ethereum Transaction hashes (64 characters) are resolved via blockchain providers.
 
 ### Response (200 OK)
 ```json

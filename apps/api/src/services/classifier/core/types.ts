@@ -76,6 +76,10 @@ export enum TransactionType {
     L2_WITHDRAWAL = 'l2_withdrawal',
     L2_PROVE_WITHDRAWAL = 'l2_prove_withdrawal',
     L2_FINALIZE_WITHDRAWAL = 'l2_finalize_withdrawal',
+
+    // --- Social & Communications ---
+    SOCIAL_CAST = 'SOCIAL_CAST',
+
     CONTRACT_DEPLOYMENT = 'contract_deployment',
     CONTRACT_INTERACTION = 'contract_interaction', // Use with caution (low confidence fallback)
     NATIVE_TRANSFER = 'native_transfer',

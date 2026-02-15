@@ -86,6 +86,7 @@ export class TransactionClassifierService {
             [TransactionType.L2_WITHDRAWAL]: 'L2 Withdrawal',
             [TransactionType.L2_PROVE_WITHDRAWAL]: 'Prove L2 Withdrawal',
             [TransactionType.L2_FINALIZE_WITHDRAWAL]: 'Finalize L2 Withdrawal',
+            [TransactionType.SOCIAL_CAST]: 'Farcaster Cast',
             [TransactionType.UNCLASSIFIED_COMPLEX]: 'Complex Transaction',
             [TransactionType.UNKNOWN]: 'Unknown Transaction',
         };
@@ -133,6 +134,7 @@ export class TransactionClassifierService {
             [TransactionType.L2_WITHDRAWAL]: '↑',
             [TransactionType.L2_PROVE_WITHDRAWAL]: '?',
             [TransactionType.L2_FINALIZE_WITHDRAWAL]: '✓',
+            [TransactionType.SOCIAL_CAST]: '🗨️',
             [TransactionType.UNCLASSIFIED_COMPLEX]: '?',
             [TransactionType.UNKNOWN]: '?',
         };

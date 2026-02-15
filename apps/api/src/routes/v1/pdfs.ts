@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { SoftQueueService } from '../../services/SoftQueueService';
 import { saasMiddleware, AuthenticatedRequest } from '../../middleware/saasAuth';
 
+import { flexibleHashSchema } from '../../lib/validations';
+
 const router = Router();
 const queueService = new SoftQueueService();
 
@@ -10,7 +12,7 @@ const queueService = new SoftQueueService();
 router.use(saasMiddleware);
 
 const jobSchema = z.object({
-    txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/, "Invalid Transaction Hash format"),
+    txHash: flexibleHashSchema,
     chainId: z.number().int().positive(),
     connectedWallet: z.string().optional()
 });

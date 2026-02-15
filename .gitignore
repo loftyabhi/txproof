@@ -81,3 +81,12 @@ packages/database/scripts/*.js
 
 # --- Puppeteer ---
 .cache/
+
+# --- Deployment Cleanliness: Ignore Dev/Test Scripts ---
+**/scripts/test-*.ts
+**/scripts/debug-*.ts
+**/scripts/test-*.js
+apps/api/src/scripts/
+packages/database/scripts/
+scripts/
+!apps/api/scripts/postbuild.js

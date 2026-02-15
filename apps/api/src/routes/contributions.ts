@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ContributionService } from '../services/ContributionService';
 import { supabase } from '../lib/supabase';
 import { publicRateLimiter } from '../middleware/publicRateLimiter';
+import { flexibleHashSchema, ETH_TX_HASH_REGEX, FARCASTER_CAST_HASH_REGEX } from '../lib/validations';
 
 const router = Router();
 const contributionService = new ContributionService();
@@ -11,7 +12,7 @@ const contributionService = new ContributionService();
 router.use(publicRateLimiter);
 
 const submitSchema = z.object({
-    txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/, "Invalid Transaction Hash format").transform(val => val.toLowerCase()),
+    txHash: flexibleHashSchema.transform(val => val.toLowerCase()),
     isAnonymous: z.boolean().default(false)
 });
 
@@ -39,8 +40,8 @@ router.get('/status/:txHash', async (req: Request, res: Response, next: NextFunc
         const txHash = req.params.txHash.toLowerCase();
 
         // Basic format check
-        if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) {
-            res.status(400).json({ error: "Invalid transaction hash format" });
+        if (!ETH_TX_HASH_REGEX.test(txHash) && !FARCASTER_CAST_HASH_REGEX.test(txHash)) {
+            res.status(400).json({ error: "Invalid hash format. Must be a Transaction Hash (64 hex) or Farcaster Cast Hash (40 hex)." });
             return; // Explicit return to avoid void type error
         }
 

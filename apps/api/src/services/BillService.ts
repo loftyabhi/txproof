@@ -13,6 +13,9 @@ import { supabase } from '../lib/supabase';
 import { createHash } from 'crypto';
 import { computeReceiptHash } from '../lib/cryptography';
 import { logger, createComponentLogger } from '../lib/logger';
+import { FARCASTER_CAST_HASH_REGEX } from '../lib/validations';
+import { neynarService } from './NeynarService';
+import { TransactionType } from './classifier/core/types';
 
 // --- Strict Interfaces ---
 
@@ -310,6 +313,13 @@ export class BillService {
             };
         }
 
+        // 0.1 Farcaster Cast Detection
+        const isFarcasterCast = FARCASTER_CAST_HASH_REGEX.test(txHash);
+        if (isFarcasterCast) {
+            billLogger.info('Farcaster cast hash detected, redirecting to cast resolution', { txHash });
+            return this.resolveFarcasterCast(request);
+        }
+
         try {
             // 1. Fetch Basic Info first (Cost: 1 RPC Call) to derive the ID
             // We need Block Number to construct the standard Bill ID
@@ -506,6 +516,136 @@ export class BillService {
 
         } catch (error: any) {
             billLogger.error('Bill generation failed', { txHash, chainId, error: error.message });
+            throw error;
+        }
+    }
+
+    /**
+     * Stub for Farcaster Cast Resolution
+     * This will eventually call a Farcaster Hub RPC to verify and resolve the cast.
+     */
+    private async resolveFarcasterCast(request: BillRequest): Promise<BillResponse> {
+        const { txHash, chainId } = request;
+        logger.info('[BillService] Resolving Farcaster cast via Neynar', { txHash });
+
+        try {
+            const cast = await neynarService.getCast(txHash);
+
+            // Map Neynar Cast -> BillViewModel
+            const billId = `cast_${txHash.substring(2, 10)}_${Date.now()}`;
+            const timestamp = new Date(cast.timestamp).getTime() / 1000;
+
+            const billData: BillViewModel = {
+                BILL_ID: billId,
+                BILL_VERSION: ' enterprise-2.0',
+                GENERATED_AT: new Date().toISOString(),
+                STATUS: 'PUBLISHED',
+                STATUS_CONFIRMED: true,
+
+                // Network
+                CHAIN_NAME: 'Farcaster',
+                CHAIN_ID: chainId || 0,
+                CHAIN_SYMBOL: 'FC',
+                CONTRACT_ADDRESS: 'N/A',
+                DATE: new Date(cast.timestamp).toLocaleDateString(),
+                CHAIN_ICON: 'https://m.txproof.xyz/chains/farcaster.png',
+                HOME_URL: 'https://warpcast.com',
+
+                hasAd: false,
+                adContent: '',
+
+                // Transaction
+                TRANSACTION_HASH: cast.hash,
+                BLOCK_NUMBER: 'N/A',
+                BLOCK_HASH_SHORT: 'FC-HUB',
+                TIMESTAMP: cast.timestamp,
+                TIMESTAMP_RELATIVE: this.getRelativeTime(new Date(cast.timestamp)),
+                CONFIRMATIONS: 1,
+
+                // Classification
+                TYPE: TransactionType.SOCIAL_CAST,
+                TYPE_READABLE: transactionClassifier.getTypeLabel(TransactionType.SOCIAL_CAST),
+                TYPE_ICON: transactionClassifier.getTypeIcon(TransactionType.SOCIAL_CAST),
+                IS_MULTISIG: false,
+                IS_SMART_ACCOUNT: false,
+                ENVELOPE_LABEL: 'Farcaster Cast',
+
+                // Participants
+                FROM_ADDRESS: `fid:${cast.author.fid}`,
+                FROM_ENS: cast.author.username,
+                FROM_AVATAR: cast.author.pfp_url,
+                TO_ADDRESS: cast.parent_hash || 'Global Feed',
+                TO_ENS: null,
+                TO_AVATAR: '',
+
+                // Items (Cast Content embedded as pseudo-items or in metadata)
+                ITEMS: [
+                    {
+                        direction: 'in',
+                        isIn: true,
+                        tokenIcon: cast.author.pfp_url,
+                        tokenSymbol: 'CAST',
+                        tokenAddress: 'farcaster',
+                        fromShort: cast.author.username.substring(0, 6),
+                        toShort: 'Feed',
+                        amountFormatted: '1',
+                        usdValue: '0.00'
+                    }
+                ],
+                ITEMS_COUNT: 1,
+                INTERNAL_TXS: [],
+                HAS_INTERNAL_TXS: false,
+
+                // Fees (Farcaster storage/gas is abstract or already paid)
+                GAS_USED: '0',
+                GAS_PRICE_GWEI: '0',
+                TOTAL_FEE: '0',
+                TOTAL_FEE_USD: '0',
+
+                // Enterprise 
+                CONFIDENCE_LEVEL: 'Confirmed',
+                CONFIDENCE_LABEL: 'Verified via Farcaster Hub (Neynar)',
+                SECONDARY_ACTIONS: [],
+                EXECUTION_TYPE_LABEL: 'Farcaster Protocol',
+                RISK_WARNINGS: [],
+
+                // Totals
+                TOTAL_IN_USD: '0',
+                TOTAL_OUT_USD: '0',
+                TOKENS_IN_COUNT: 0,
+                TOKENS_OUT_COUNT: 0,
+                NET_CHANGE_USD: '0',
+                NET_CHANGE_SIGN: '',
+                NET_CHANGE_POSITIVE: false,
+
+                // Audit
+                RPC_PROVIDER: 'Neynar API',
+                CONFIDENCE_PERCENT: 100,
+                QR_CODE_DATA_URL: '',
+                EXPLORER_URL: `https://warpcast.com/${cast.author.username}/${cast.hash.substring(0, 10)}`,
+                INCLUDE_AUDIT: true,
+                PRICE_SOURCE: 'N/A',
+                CLASSIFICATION_METHOD: 'Neynar Hub Resolution',
+                REORG_DETECTED: false,
+                CONFIDENCE: 1,
+                CURRENT_YEAR: new Date().getFullYear(),
+                FRONTEND_URL: 'https://m.txproof.xyz',
+                DISCLAIMER_URL: 'https://txproof.xyz/legal/disclaimer',
+                CONTACT_URL: 'https://txproof.xyz/support',
+
+                HASH_ALGO: 'keccak256',
+            };
+
+            // Compute receipt hash for integrity
+            billData.RECEIPT_HASH = computeReceiptHash(billData);
+
+            return {
+                pdfPath: `/print/bill/${billData.BILL_ID}`,
+                billData
+            };
+
+        } catch (error: any) {
+            logger.error('[BillService] Farcaster resolution failed', { txHash, error: error.message });
             throw error;
         }
     }

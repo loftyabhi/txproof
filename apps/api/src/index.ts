@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { z } from 'zod';
 import cookieParser from 'cookie-parser';
+import { flexibleHashSchema } from './lib/validations';
 import { AuthService } from './services/AuthService';
 import { AdminService } from './services/AdminService';
 import { BillService } from './services/BillService';
@@ -194,7 +195,7 @@ const setupPublicRoutes = (app: express.Application) => {
 
 // --- Schemas ---
 const billGenerateSchema = z.object({
-    txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/, "Invalid Transaction Hash format"),
+    txHash: flexibleHashSchema,
     chainId: z.number().int().positive("Chain ID must be a positive integer")
         .refine((val) => isSupportedChain(val), {
             message: `Unsupported Chain ID. Supported chains are: ${SUPPORTED_CHAINS.join(', ')}`
