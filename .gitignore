@@ -81,7 +81,6 @@ packages/database/scripts/*.js
 
 # --- Puppeteer ---
 .cache/
-package-lock.json
 
 
 # --- Deployment Cleanliness: Ignore Dev/Test Scripts ---
