@@ -636,8 +636,41 @@ export class BillService {
                 HASH_ALGO: 'keccak256',
             };
 
-            // Compute receipt hash for integrity
-            billData.RECEIPT_HASH = computeReceiptHash(billData);
+            // Compute receipt hash for integrity (CRITICAL for verification)
+            const receiptHash = computeReceiptHash(billData);
+            (billData as any).RECEIPT_HASH = receiptHash;
+            (billData as any).HASH_ALGO = 'keccak256';
+
+            // 5. Upload to Supabase Storage
+            const jsonKey = `${billData.BILL_ID}.json`;
+            const jsonBuffer = Buffer.from(JSON.stringify(billData));
+
+            try {
+                await supabase.storage
+                    .from('receipts')
+                    .upload(jsonKey, jsonBuffer, {
+                        contentType: 'application/json',
+                        upsert: true
+                    });
+                logger.info('[BillService] Farcaster cast JSON uploaded to storage', { billId: billData.BILL_ID });
+            } catch (err: any) {
+                logger.error('[BillService] Failed to upload Farcaster cast JSON', { billId: billData.BILL_ID, error: err.message });
+            }
+
+            // 6. Save to Database
+            try {
+                await this.saveToDb(
+                    txHash,
+                    chainId,
+                    request.connectedWallet || '0x0000000000000000000000000000000000000000',
+                    billData,
+                    true, // Confirmed
+                    receiptHash
+                );
+                logger.info('[BillService] Farcaster cast saved to database', { billId: billData.BILL_ID });
+            } catch (err: any) {
+                logger.error('[BillService] Failed to save Farcaster cast to DB', { billId: billData.BILL_ID, error: err.message });
+            }
 
             return {
                 pdfPath: `/print/bill/${billData.BILL_ID}`,
