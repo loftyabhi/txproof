@@ -1,10 +1,11 @@
 
 import { NextResponse } from 'next/server';
+import { DOMAIN } from '@/lib/seo';
 
 export const runtime = 'edge';
 
 export async function GET() {
-    const baseUrl = 'https://txproof.xyz';
+    const baseUrl = DOMAIN;
 
     // High-value, content-rich pages for LLMs
     const pages = [

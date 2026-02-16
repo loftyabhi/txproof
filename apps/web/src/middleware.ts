@@ -44,13 +44,12 @@ export function middleware(request: NextRequest) {
     });
 
     if (hasTrackingParams) {
-        // If we stripped params, redirect to clean URL.
-        // Note: We are NOT setting cookies here to simplify, assuming client-side attribution logic 
-        // might be handled elsewhere or assuming clean URLs are prioritised. 
-        // User requirement was strict on hygiene. 
-        // If strict preservation is needed, we'd need to confirm attribution strategy. 
-        // For now, implementing strip as requested.
-        return NextResponse.redirect(url, 308);
+        // [Enterprise] Preserve original host and protocol during hygiene redirects
+        const protocol = request.headers.get('x-forwarded-proto') || 'https';
+        const host = request.headers.get('host');
+        const cleanUrl = new URL(url.pathname + url.search, `${protocol}://${host}`);
+
+        return NextResponse.redirect(cleanUrl, 308);
     }
 
     // 5. Security Headers for Privileged Routes

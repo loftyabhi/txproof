@@ -1,6 +1,7 @@
 import { MetadataRoute } from 'next';
+import { DOMAIN } from '@/lib/seo';
 
-const BASE_URL = 'https://txproof.xyz';
+const BASE_URL = DOMAIN;
 
 export default function sitemap(): MetadataRoute.Sitemap {
     const routes = [

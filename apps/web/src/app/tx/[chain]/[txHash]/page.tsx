@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
             follow: true,
         },
         alternates: {
-            canonical: `https://txproof.xyz/tx/${chain}/${txHash}`,
+            canonical: `${DOMAIN}/tx/${chain}/${txHash}`,
         },
         openGraph: {
             title: `${chainName} Transaction Analysis`,
@@ -31,7 +31,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     };
 }
 import { Navbar } from '@/components/Navbar';
-import { constructCanonical, generateBreadcrumbSchema } from '@/lib/seo';
+import { constructCanonical, generateBreadcrumbSchema, DOMAIN } from '@/lib/seo';
 
 export default async function TransactionPage({ params }: Props) {
     const { chain, txHash } = await params;

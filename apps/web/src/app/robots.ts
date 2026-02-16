@@ -1,4 +1,5 @@
 import { MetadataRoute } from 'next';
+import { DOMAIN } from '@/lib/seo';
 
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -24,8 +25,8 @@ export default function robots(): MetadataRoute.Robots {
       },
     ],
     sitemap: [
-      'https://txproof.xyz/sitemap.xml',
-      'https://txproof.xyz/llm-sitemap.xml',
+      `${DOMAIN}/sitemap.xml`,
+      `${DOMAIN}/llm-sitemap.xml`,
     ],
   };
 }

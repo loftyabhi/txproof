@@ -8,7 +8,7 @@ import { GoogleAnalytics } from '@/components/analytics/GoogleAnalytics';
 import { ConsentBanner } from '@/components/analytics/ConsentBanner';
 import { ShareAttribution } from '@/components/analytics/ShareAttribution';
 import { RealUserMonitoring } from '@/components/analytics/RealUserMonitoring';
-import { generateOrganizationSchema, generateWebSiteSchema, constructCanonical } from '@/lib/seo';
+import { generateOrganizationSchema, generateWebSiteSchema, constructCanonical, DOMAIN } from '@/lib/seo';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -27,7 +27,7 @@ const jetbrainsMono = JetBrains_Mono({
 // No random preloads for non-critical scripts
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://txproof.xyz'),
+  metadataBase: new URL(DOMAIN),
   verification: {
     google: 'qqKLsD62JCrHlaIcPeLmWB3jUJIZ1GiMY5-N1bN-cOM',
   },

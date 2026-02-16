@@ -2,7 +2,7 @@ import { Metadata } from 'next';
 
 export const BRAND = "TxProof";
 export const TAGLINE = "Professional Blockchain Intelligence";
-export const DOMAIN = "https://txproof.xyz";
+export const DOMAIN = process.env.NEXT_PUBLIC_APP_URL || "https://txproof.xyz";
 
 // --- Canonical URL Construction ---
 
