@@ -5,9 +5,17 @@ export function middleware(request: NextRequest) {
     const url = request.nextUrl.clone();
     const { pathname, searchParams } = url;
 
-    // 1. Force HTTPS in production (Vercel usually handles this, but good to enforce)
+    // 1. Force HTTPS in production
     if (process.env.NODE_ENV === 'production' && request.headers.get('x-forwarded-proto') !== 'https') {
         return NextResponse.redirect(`https://${request.headers.get('host')}${request.nextUrl.pathname}`, 301);
+    }
+
+    // 1.5. Subdomain Redirect for Receipts: txproof.xyz/receipt -> m.txproof.xyz/receipt
+    const host = request.headers.get('host') || '';
+    if ((host === 'txproof.xyz' || host === 'www.txproof.xyz') && pathname.startsWith('/receipt')) {
+        const protocol = request.headers.get('x-forwarded-proto') || 'https';
+        const redirectedUrl = new URL(pathname + url.search, `${protocol}://m.txproof.xyz`);
+        return NextResponse.redirect(redirectedUrl, 301);
     }
 
     // 2. URL Hygiene: Lowercase path (excluding assets)
