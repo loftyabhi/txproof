@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { UsageController } from '../../controllers/UsageController';
+import { saasMiddleware } from '../../middleware/saasAuth';
 
 const router = Router();
 const usageController = new UsageController();
+
+router.use(saasMiddleware);
 
 /**
  * GET /v1/usage

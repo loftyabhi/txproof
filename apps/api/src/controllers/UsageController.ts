@@ -128,15 +128,61 @@ export class UsageController {
 
     /**
      * Fallback for Public API calls (using API Key only)
+     * Goal: Resolve the OWNER of the key and return their total aggregate usage.
      */
     private async getUsageForApiKey(req: Request, res: Response) {
-        const apiKeyId = await this.resolveApiKeyId(req);
+        const apiKeyId = (req as AuthenticatedRequest).apiKeyId;
         if (!apiKeyId) return res.status(401).json({ error: 'Unauthorized' });
 
-        // Original logic for single key...
-        // For brevity, using a simplified return here, but in production 
-        // this should mirror the single-key logic we replaced.
-        return res.status(501).json({ error: 'Public usage check not implemented yet' });
+        try {
+            // 1. Resolve Owner User ID
+            const { data: keyDetails } = await supabase
+                .from('api_keys')
+                .select('owner_user_id')
+                .eq('id', apiKeyId)
+                .single();
+
+            if (!keyDetails?.owner_user_id) {
+                return res.status(404).json({ error: 'API Key owner not found' });
+            }
+
+            // 2. Query Rollup View (Unified Source of Truth)
+            const { data: rollup, error: rollupError } = await supabase
+                .from('view_user_usage_rollup')
+                .select('*')
+                .eq('user_id', keyDetails.owner_user_id)
+                .single();
+
+            if (rollupError && rollupError.code !== 'PGRST116') { // PGRST116 is "No rows found"
+                throw rollupError;
+            }
+
+            const totalUsage = rollup?.total_usage || 0;
+            const quotaLimit = rollup?.monthly_quota || 1000;
+
+            const plan = {
+                name: quotaLimit > 1000 ? (quotaLimit >= 1000000 ? 'Enterprise' : 'Pro') : 'Standard',
+                limit: quotaLimit,
+                rateLimitRps: quotaLimit >= 100000 ? 100 : 10
+            };
+
+            const startDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+            const endDate = new Date().toISOString();
+
+            const usage = {
+                total: totalUsage,
+                remaining: Math.max(0, quotaLimit - totalUsage),
+                period: {
+                    start: startDate,
+                    end: endDate
+                }
+            };
+
+            res.json({ plan, usage });
+        } catch (error: any) {
+            logger.error('Public usage endpoint error', { error: error.message, apiKeyId });
+            res.status(500).json({ error: 'Failed to fetch usage metrics' });
+        }
     }
 
     /**

@@ -388,10 +388,6 @@ export class BillService {
             billLogger.info('Cache miss, fetching full transaction data', { billId, txHash });
 
             // Fetch remaining data (Tx, Block, Timestamp) - Receipt is already fetched
-            // We can reuse the provider but we need to match the signature of fetchTransactionData or call it fully.
-            // For simplicity and robustness, we can call fetchTransactionData but pass the known receipt if we refactored.
-            // But fetchTransactionData fetches everything in parallel.
-            // Let's just let it fetch. It's 1 extra call on a MISS. Acceptable.
             const { tx, block, timestamp } = await this.fetchFullData(provider, txHash, receipt);
 
             // Classify Transaction
@@ -401,7 +397,7 @@ export class BillService {
             const userAddress = this.resolveUserIdentity(request, tx, classification);
 
             // Resolve ENS
-            const { fromName, toName } = await this.resolveNames(classification.details?.sender || tx.from, tx.to, chainId);
+            const { fromName, fromAvatar, toName, toAvatar } = await this.resolveNames(classification.details?.sender || tx.from, tx.to, chainId);
 
             // Raw Token Parsing
             const rawMovements = await this.parseRawMovements(receipt.logs, chainId, provider);
@@ -439,7 +435,7 @@ export class BillService {
             // View Model construction
             const billData = await this.buildBillViewModel({
                 request, tx, receipt, timestamp, classification,
-                userAddress, fromName, toName,
+                userAddress, fromName, fromAvatar, toName, toAvatar,
                 pricedMovements, internalTxs, feeData,
                 // Pass derived ID to ensure consistency
                 forcedBillId: billId
@@ -992,7 +988,7 @@ export class BillService {
     // --- ViewModel ---
 
     private async buildBillViewModel(data: any): Promise<BillViewModel> {
-        const { request, tx, receipt, timestamp, classification, userAddress, fromName, toName, pricedMovements, internalTxs, feeData, forcedBillId } = data;
+        const { request, tx, receipt, timestamp, classification, userAddress, fromName, fromAvatar, toName, toAvatar, pricedMovements, internalTxs, feeData, forcedBillId } = data;
         const chainId = request.chainId;
         const now = new Date();
         const txDate = new Date(timestamp * 1000);
@@ -1112,10 +1108,10 @@ export class BillService {
             PROTOCOL_TAG: classification.protocol?.toUpperCase() || classification.details.protocol?.toUpperCase(),
             FROM_ADDRESS: classification.details?.sender || tx.from,
             FROM_ENS: fromName,
-            FROM_AVATAR: this.getAvatar(classification.details?.sender || tx.from, fromName),
+            FROM_AVATAR: fromAvatar || this.getAvatar(classification.details?.sender || tx.from, fromName),
             TO_ADDRESS: tx.to || "Contract Creation",
             TO_ENS: toName,
-            TO_AVATAR: this.getAvatar(tx.to || "0x00", toName),
+            TO_AVATAR: toAvatar || this.getAvatar(tx.to || "0x00", toName),
             ITEMS: items,
             ITEMS_COUNT: items.length,
             INTERNAL_TXS: internalTxs,
@@ -1205,8 +1201,24 @@ export class BillService {
         // Optimization: Cache this provider too? Or is it mainnet specific?
         // Usually resolveNames uses Mainnet.
         const p = this.getRpcProvider(1);
-        const resolve = async (a: string) => { try { return await p.lookupAddress(a); } catch { return null; } };
-        return { fromName: await resolve(from), toName: to ? await resolve(to) : null };
+        const resolve = async (a: string) => {
+            try {
+                const name = await p.lookupAddress(a);
+                const avatar = name ? await p.getAvatar(name) : null;
+                return { name, avatar };
+            } catch {
+                return { name: null, avatar: null };
+            }
+        };
+        const fromRes = await resolve(from);
+        const toRes = to ? await resolve(to) : { name: null, avatar: null };
+
+        return {
+            fromName: fromRes.name,
+            fromAvatar: fromRes.avatar,
+            toName: toRes.name,
+            toAvatar: toRes.avatar
+        };
     }
 
     private getAvatar(addr: string, name: string | null) { return name ? name.slice(0, 2).toUpperCase() : addr.slice(2, 4).toUpperCase(); }
