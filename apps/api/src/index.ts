@@ -42,6 +42,7 @@ const port = process.env.PORT || 3001;
 const allowedOrigins = [
     'https://txproof.xyz',
     'https://www.txproof.xyz',
+    'https://m.txproof.xyz', // [NEW] Client Subdomain
     'https://api.txproof.xyz', // Playground
     'https://docs.txproof.xyz', // Docs Production
     'http://localhost:3000',
@@ -52,13 +53,23 @@ const allowedOrigins = [
 app.use(cors({
     origin: function (origin, callback) {
         if (!origin) return callback(null, true);
+
+        // 1. Static Allowlist
         if (allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
-            // Log the rejected origin for debugging
-            logger.error(`CORS Blocked Origin: ${origin}`, { origin });
-            callback(new Error(`Not allowed by CORS: ${origin}`));
+            return callback(null, true);
         }
+
+        // 2. Vercel Preview/Branch Deployments (loftyabhi or txproof prefixes)
+        const isVercelPreview = origin.match(/^https:\/\/txproof-.*-loftyabhi\.vercel\.app$/) || 
+                                origin.match(/^https:\/\/.*\.vercel\.app$/); // General Vercel fallback
+
+        if (isVercelPreview) {
+            return callback(null, true);
+        }
+
+        // Log the rejected origin for debugging
+        logger.error(`CORS Blocked Origin: ${origin}`, { origin });
+        callback(new Error(`Not allowed by CORS: ${origin}`));
     },
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'], // Allow custom API key header

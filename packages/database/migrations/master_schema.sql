@@ -486,7 +486,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC);
 -- -----------------------------------------------------------------------------
 
 -- 7.1 User Usage Rollup (Effective Quota)
-CREATE OR REPLACE VIEW view_user_usage_rollup AS
+CREATE OR REPLACE VIEW view_user_usage_rollup WITH (security_invoker = false) AS
 SELECT 
     u.id AS user_id,
     u.wallet_address,
