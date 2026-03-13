@@ -92,6 +92,7 @@ export class ChainRegistryService {
 
         const unifiedChains: UnifiedChainConfig[] = (data as any[]).map(row => {
             const config = row.config_json as ChainConfigJson;
+            const chainConfig = Array.isArray(row.chain_configs) ? row.chain_configs[0] : row.chain_configs;
             
             // Validation
             if (!config.rpcUrl) {
@@ -105,10 +106,10 @@ export class ChainRegistryService {
                 explorerUrl: row.explorer_url || config.explorerUrl || '',
                 currencySymbol: row.currency_symbol || 'ETH',
                 config: config,
-                nativeSymbol: row.chain_configs.native_symbol,
-                dustThresholdWei: row.chain_configs.dust_threshold_wei,
-                chainType: row.chain_configs.chain_type,
-                isActive: row.chain_configs.is_active
+                nativeSymbol: chainConfig?.native_symbol || row.currency_symbol || 'ETH',
+                dustThresholdWei: chainConfig?.dust_threshold_wei || '1000',
+                chainType: (chainConfig?.chain_type as any) || 'L1',
+                isActive: chainConfig?.is_active ?? true
             };
         }).filter(c => c.config.rpcUrl);
 
