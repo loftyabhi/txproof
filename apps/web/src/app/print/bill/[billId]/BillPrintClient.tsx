@@ -9,6 +9,10 @@ import { BillViewModel } from './types'; // Ensure types is valid
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
+const isUrlIcon = (icon: string) => {
+    return icon.startsWith('http') || icon.startsWith('/') || icon.includes('.svg') || icon.includes('.png');
+};
+
 // Simple Modal Component since Shadcn is apparently missing
 function VerificationModal({ hash, onClose }: { hash: string, onClose: () => void }) {
     return (
@@ -264,7 +268,21 @@ export default function BillPrintClient() {
                                     </div>
 
                                     <div className="flex items-center gap-2 text-sm font-bold text-gray-700">
-                                        <span style={{ fontSize: '16px' }}>{data.CHAIN_ICON}</span>
+                                        <span style={{ fontSize: '16px', display: 'flex', alignItems: 'center' }}>
+                                            {isUrlIcon(data.CHAIN_ICON) ? (
+                                                <img
+                                                    src={data.CHAIN_ICON}
+                                                    alt={data.CHAIN_NAME}
+                                                    className="w-5 h-5 rounded-full object-contain"
+                                                    onError={(e) => {
+                                                        // Fallback if image fails
+                                                        (e.target as HTMLImageElement).style.display = 'none';
+                                                    }}
+                                                />
+                                            ) : (
+                                                data.CHAIN_ICON
+                                            )}
+                                        </span>
                                         <span>{data.CHAIN_NAME} ({data.CHAIN_ID})</span>
                                     </div>
 
