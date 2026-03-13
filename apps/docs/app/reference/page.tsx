@@ -78,6 +78,13 @@ export default function Reference() {
       "symbol": "ETH",
       "icon": "🔵",
       "explorer": "basescan.org"
+    },
+    {
+      "id": 137,
+      "name": "Polygon",
+      "symbol": "POL",
+      "icon": "🟣",
+      "explorer": "polygonscan.com"
     }
   ]
 }`} />
@@ -225,6 +232,49 @@ export default function Reference() {
                 </Endpoint>
             </div>
 
+
+            {/* --- WEBHOOK PAYLOADS --- */}
+            <div className="space-y-6 pt-12">
+                <h2 className="text-2xl font-bold border-b pb-2">Webhook Payloads</h2>
+                <div className="space-y-6">
+                    <p className="text-muted-foreground leading-relaxed">
+                        When an event occurs, TxProof sends a POST request to your URL with a JSON payload. 
+                        Events now include dynamic chain metadata for easier processing.
+                    </p>
+
+                    <Tabs items={[
+                        {
+                            label: 'bill.completed',
+                            value: 'completed',
+                            content: <CodeBlock language="json" code={`{
+  "id": "job_123",
+  "bill_id": "bill_abc",
+  "status": "completed",
+  "tx_hash": "0x...",
+  "chain_id": 8453,
+  "chain_name": "Base",
+  "chain_symbol": "ETH",
+  "chain_icon": "🔵",
+  "billDataUrl": "https://storage.txproof.xyz/...",
+  "duration_ms": 4500
+}`} />
+                        },
+                        {
+                            label: 'bill.failed',
+                            value: 'failed',
+                            content: <CodeBlock language="json" code={`{
+  "id": "job_123",
+  "status": "failed",
+  "error": "Transaction not found",
+  "tx_hash": "0x...",
+  "chain_id": 8453,
+  "chain_name": "Base",
+  "chain_symbol": "ETH"
+}`} />
+                        }
+                    ]} />
+                </div>
+            </div>
 
             {/* --- TEMPLATES --- */}
             <div className="space-y-6 pt-12">

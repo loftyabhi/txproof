@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { BillService } from './BillService';
-import { WebhookService } from './WebhookService'; // [NEW] Import
+import { WebhookService } from './WebhookService';
+import { chainRegistry } from './ChainRegistryService';
 
 const MAX_CONCURRENT_JOBS = parseInt(process.env.MAX_CONCURRENT_JOBS || '2', 10);
 const PROCESSING_TIMEOUT_MINS = parseInt(process.env.JOB_PROCESSING_TIMEOUT_MINUTES || '5', 10);
@@ -41,6 +42,8 @@ export class SoftQueueService {
                     // Fetch result to send in payload
                     const status = await this.getJobStatus(existing.id);
                     if (status && status.result) {
+                        const chain = await chainRegistry.getChain(existing.chain_id);
+
                         // Dispatch synthetic event
                         await this.webhookService.dispatch('bill.completed', {
                             id: existing.id,
@@ -48,6 +51,9 @@ export class SoftQueueService {
                             tx_hash: existing.tx_hash,
                             transaction_hash: existing.tx_hash,
                             chain_id: existing.chain_id,
+                            chain_name: chain?.name || 'Unknown',
+                            chain_symbol: chain?.currencySymbol || '?',
+                            chain_icon: chain?.config?.iconUrl || '',
                             status: 'completed',
                             duration_ms: existing.duration_ms || 0,
                             txHash: existing.tx_hash,
@@ -213,6 +219,7 @@ export class SoftQueueService {
                 // [Webhook] Dispatch Success
                 if (job.api_key_id) {
                     const { data } = supabase.storage.from('receipts').getPublicUrl(`${result.billData.BILL_ID}.json`);
+                    const chain = await chainRegistry.getChain(job.chain_id);
 
                     this.webhookService.dispatch('bill.completed', {
                         id: job.id,
@@ -220,6 +227,9 @@ export class SoftQueueService {
                         tx_hash: job.tx_hash,
                         transaction_hash: job.tx_hash,
                         chain_id: job.chain_id,
+                        chain_name: chain?.name || 'Unknown',
+                        chain_symbol: chain?.currencySymbol || '?',
+                        chain_icon: chain?.config?.iconUrl || '',
                         status: 'completed',
                         duration_ms: duration,
                         // Maintain camelCase for top-level spread in WebhookService
@@ -246,11 +256,15 @@ export class SoftQueueService {
 
                 // [Webhook] Dispatch Failure
                 if (job.api_key_id) {
+                    const chain = await chainRegistry.getChain(job.chain_id);
                     this.webhookService.dispatch('bill.failed', {
                         id: job.id,
                         tx_hash: job.tx_hash,
                         transaction_hash: job.tx_hash,
                         chain_id: job.chain_id,
+                        chain_name: chain?.name || 'Unknown',
+                        chain_symbol: chain?.currencySymbol || '?',
+                        chain_icon: chain?.config?.iconUrl || '',
                         status: 'failed',
                         error: err.message,
                         // Maintain camelCase for top-level spread

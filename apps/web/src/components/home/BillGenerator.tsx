@@ -338,14 +338,13 @@ export function BillGenerator() {
                             onChange={(e) => handleChainChange(Number(e.target.value))}
                             className="bg-transparent text-white outline-none border-none font-medium cursor-pointer appearance-none text-sm uppercase tracking-wide [&>option]:bg-zinc-900"
                         >
-                            <option value={8453}>Base</option>
-                            <option value={1}>Ethereum</option>
-                            <option value={137}>Polygon</option>
-                            <option value={42161}>Arbitrum</option>
-                            <option value={10}>Optimism</option>
-                            <option value={56}>BSC</option>
-                            <option value={43114}>Avax</option>
-                            <option value={11155111}>Sepolia</option>
+                            {chains.length > 0 ? (
+                                chains.map(c => (
+                                    <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+                                ))
+                            ) : (
+                                <option value={8453}>... Loading</option>
+                            )}
                         </select>
                     </div>
 

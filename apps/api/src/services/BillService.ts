@@ -403,7 +403,7 @@ export class BillService {
                     from: tx.from.toLowerCase(),
                     to: tx.to?.toLowerCase() || 'contract',
                     amount: tx.value,
-                    symbol: this.getNativeSymbol(chainId),
+                    symbol: await this.getNativeSymbol(chainId),
                     decimals: 18
                 });
             }
@@ -890,7 +890,8 @@ export class BillService {
 
     private async fetchInternalTransactions(txHash: string, chainId: number, blockNumber: number): Promise<InternalTxViewModel[]> {
         try {
-            if (this.isAlchemySupported(chainId)) {
+            const chain = await chainRegistry.getChain(chainId);
+            if (chain?.config.alchemyNetwork) {
                 const alc = await this.fetchInternalFromAlchemy(txHash, chainId, blockNumber);
                 if (alc.length > 0) return alc;
             }
@@ -901,16 +902,12 @@ export class BillService {
     private async fetchInternalFromAlchemy(txHash: string, chainId: number, blockNumber: number): Promise<InternalTxViewModel[]> {
         const key = process.env.ALCHEMY_API_KEY;
         if (!key) return [];
-        let url = '';
-        switch (chainId) {
-            case 1: url = `https://eth-mainnet.g.alchemy.com/v2/${key}`; break;
-            case 8453: url = `https://base-mainnet.g.alchemy.com/v2/${key}`; break;
-            case 137: url = `https://polygon-mainnet.g.alchemy.com/v2/${key}`; break;
-            case 42161: url = `https://arb-mainnet.g.alchemy.com/v2/${key}`; break;
-            case 10: url = `https://opt-mainnet.g.alchemy.com/v2/${key}`; break;
-            case 11155111: url = `https://eth-sepolia.g.alchemy.com/v2/${key}`; break;
-            default: return [];
-        }
+        
+        const chain = await chainRegistry.getChain(chainId);
+        const network = chain?.config.alchemyNetwork;
+        if (!network) return [];
+
+        const url = `https://${network}.g.alchemy.com/v2/${key}`;
 
         try {
             const hexBlock = `0x${blockNumber.toString(16)}`;
@@ -1070,9 +1067,9 @@ export class BillService {
             EXECUTION_TYPE_LABEL: execLabel,
             RISK_WARNINGS: risks,
 
-            CHAIN_NAME: this.getChainName(chainId),
+            CHAIN_NAME: await this.getChainName(chainId),
             CHAIN_ID: chainId,
-            CHAIN_SYMBOL: this.getNativeSymbol(chainId),
+            CHAIN_SYMBOL: await this.getNativeSymbol(chainId),
             CONTRACT_ADDRESS: "0x...", // populated if needed or generic
             DATE: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
             CHAIN_ICON: await getChainIcon(chainId),
@@ -1151,36 +1148,24 @@ export class BillService {
         if (chain?.config.rpcUrl) return chain.config.rpcUrl;
 
         const k = process.env.ALCHEMY_API_KEY;
-        if (k && this.isAlchemySupported(chainId)) {
-            switch (chainId) {
-                case 8453: return `https://base-mainnet.g.alchemy.com/v2/${k}`;
-                case 137: return `https://polygon-mainnet.g.alchemy.com/v2/${k}`;
-                case 42161: return `https://arb-mainnet.g.alchemy.com/v2/${k}`;
-                case 10: return `https://opt-mainnet.g.alchemy.com/v2/${k}`;
-                case 11155111: return `https://eth-sepolia.g.alchemy.com/v2/${k}`;
-                default: return `https://eth-mainnet.g.alchemy.com/v2/${k}`;
-            }
+        const alchemyNetwork = chain?.config.alchemyNetwork;
+        
+        if (k && alchemyNetwork) {
+            return `https://${alchemyNetwork}.g.alchemy.com/v2/${k}`;
         }
-        if (chainId === 1) return 'https://eth.llamarpc.com';
-        return this.rpcs[chainId] || 'https://eth.llamarpc.com';
+        
+        // Final fallback to Ethereum Mainnet if nothing else works
+        return 'https://eth.llamarpc.com';
     }
 
-    private isAlchemySupported(chainId: number) { return [1, 137, 8453, 10, 42161, 11155111].includes(chainId); }
-
-    private getChainName(chainId: number) {
-        if (chainId === 1) return 'Ethereum Mainnet';
-        if (chainId === 8453) return 'Base Mainnet';
-        if (chainId === 137) return 'Polygon';
-        if (chainId === 42161) return 'Arbitrum One';
-        if (chainId === 10) return 'Optimism';
-        return 'Chain ' + chainId;
+    private async getChainName(chainId: number) {
+        const chain = await chainRegistry.getChain(chainId);
+        return chain?.name || `Chain ${chainId}`;
     }
 
-    private getNativeSymbol(chainId: number) {
-        if (chainId === 137) return 'MATIC';
-        if (chainId === 56) return 'BNB';
-        if (chainId === 43114) return 'AVAX';
-        return 'ETH';
+    private async getNativeSymbol(chainId: number) {
+        const chain = await chainRegistry.getChain(chainId);
+        return chain?.nativeSymbol || 'ETH';
     }
 
     private async getExplorerUrl(chainId: number, hash: string) {
