@@ -23,6 +23,11 @@ export function BillGenerator() {
     const [chainId, setChainId] = useState(8453);
     const [showLoginModal, setShowLoginModal] = useState(false);
     const [chains, setChains] = useState<{ id: number; name: string; icon: string }[]>([]);
+    const [isMounted, setIsMounted] = useState(false);
+
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
     useEffect(() => {
         const fetchChains = async () => {
@@ -188,7 +193,14 @@ export function BillGenerator() {
                         toast.loading("Processing transaction data...", { id: toastId });
                     } else if (jobData.state === 'completed') {
                         clearInterval(pollInterval);
-                        setPdfUrl(jobData.pdfUrl); // Already includes /print/bill/...
+                        
+                        // Ensure pdfUrl is absolute to prevent iframe redirect issues
+                        const rawPdfUrl = jobData.pdfUrl;
+                        const absolutePdfUrl = rawPdfUrl.startsWith('http') 
+                            ? rawPdfUrl 
+                            : `${process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '')}${rawPdfUrl}`;
+                            
+                        setPdfUrl(absolutePdfUrl); 
 
                         // Handle Storage URL optimization (String URL vs Legacy JSON Object)
                         let finalBillData = jobData.data;
@@ -232,6 +244,10 @@ export function BillGenerator() {
         setChainId(newChainId);
         trackEvent('chain_selected', { chain: newChainId.toString() });
     };
+
+    const isUrlIcon = (icon: string) => icon && (icon.startsWith('http') || icon.startsWith('/') || icon.includes('.svg') || icon.includes('.png'));
+
+    const selectedChain = chains.find(c => c.id === chainId);
 
 
 
@@ -330,17 +346,33 @@ export function BillGenerator() {
                 <form onSubmit={generateBill} className="group relative flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 p-2 shadow-2xl shadow-violet-900/10 backdrop-blur-xl transition-all focus-within:ring-2 focus-within:ring-violet-500/20 focus-within:border-violet-500/50">
 
                     {/* Chain Selector */}
-                    <div className="pl-4 pr-2 border-r border-white/10 hidden md:block">
+                    <div className="pl-4 pr-2 border-r border-white/10 hidden md:flex items-center gap-2 max-w-[180px] shrink-0">
+                        {selectedChain && isUrlIcon(selectedChain.icon) ? (
+                            <div className="w-5 h-5 rounded-full overflow-hidden bg-white/10 flex-shrink-0">
+                                <img 
+                                    src={selectedChain.icon} 
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                    }}
+                                />
+                            </div>
+                        ) : (
+                            <span className="text-lg">{selectedChain?.icon || '⛓️'}</span>
+                        )}
                         <label htmlFor="chain-select-desktop" className="sr-only">Select Chain</label>
                         <select
                             id="chain-select-desktop"
                             value={chainId}
                             onChange={(e) => handleChainChange(Number(e.target.value))}
-                            className="bg-transparent text-white outline-none border-none font-medium cursor-pointer appearance-none text-sm uppercase tracking-wide [&>option]:bg-zinc-900"
+                            className="bg-transparent text-white outline-none border-none font-medium cursor-pointer appearance-none text-sm uppercase tracking-wide [&>option]:bg-zinc-900 truncate max-w-[100px]"
                         >
                             {chains.length > 0 ? (
                                 chains.map(c => (
-                                    <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+                                    <option key={c.id} value={c.id}>
+                                        {isUrlIcon(c.icon) ? c.name : `${c.icon} ${c.name}`}
+                                    </option>
                                 ))
                             ) : (
                                 <option value={8453}>... Loading</option>
@@ -383,7 +415,9 @@ export function BillGenerator() {
                     >
                         {chains.length > 0 ? (
                             chains.map(c => (
-                                <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+                                <option key={c.id} value={c.id}>
+                                    {isUrlIcon(c.icon) ? c.name : `${c.icon} ${c.name}`}
+                                </option>
                             ))
                         ) : (
                             <option value={8453}>... Loading Chains</option>
