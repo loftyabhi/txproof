@@ -296,7 +296,7 @@ INSERT INTO tmp_selectors (selector, name, category, confidence_boost) VALUES
 ('0xc04b8d59', 'exactInput', 'dex_swap', 0.150),
 ('0x09b81346', 'exactOutput', 'dex_swap', 0.150),
 ('0x3593564c', 'execute', 'dex_swap', 0.150),
-('0x5ae401dc', 'multisall', 'dex_swap', 0.150),
+('0x5ae401dc', 'multicall', 'dex_swap', 0.150),
 ('0xac9650d8', 'multicall', 'dex_swap', 0.150),
 
 -- DEX LIQUIDITY

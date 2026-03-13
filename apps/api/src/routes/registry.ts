@@ -3,8 +3,17 @@ import { Router, Request, Response } from 'express';
 import { RegistryAdminService } from '../services/classifier/admin/RegistryAdminService';
 import { getDatabasePool } from '../utils/db'; // Placeholder matching standard structure
 
-// Stub for authentication middleware that should already exist in project
-const requireAdmin = (req: Request, res: Response, next: Function) => next();
+// Basic authentication middleware
+const requireAdmin = (req: Request, res: Response, next: Function) => {
+    const authHeader = req.headers.authorization;
+    const token = process.env.ADMIN_TOKEN || 'debug-token'; // Use env or fallback for debug
+    
+    if (authHeader === `Bearer ${token}`) {
+        next();
+    } else {
+        res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+};
 
 const router = Router();
 let adminService: RegistryAdminService;
@@ -36,10 +45,22 @@ router.post('/addresses', requireAdmin, async (req: Request, res: Response) => {
     }
 });
 
-// Deprecate Protocol Address
-router.delete('/addresses', requireAdmin, async (req: Request, res: Response) => {
+// List Addresses for Chain
+router.get('/addresses/:chain', requireAdmin, async (req: Request, res: Response) => {
     try {
-        const { chainId, address } = req.body;
+        const chainId = parseInt(req.params.chain);
+        const data = await getService().listAddresses(chainId);
+        res.status(200).json({ success: true, data });
+    } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Deprecate Protocol Address
+router.delete('/addresses/:chain/:address', requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const chainId = parseInt(req.params.chain);
+        const address = req.params.address;
         await getService().deprecateProtocolAddress(chainId, address);
         res.status(200).json({ success: true, message: 'Address deprecated' });
     } catch (error: any) {
@@ -75,6 +96,27 @@ router.post('/chains', requireAdmin, async (req: Request, res: Response) => {
         const { chainId, name, nativeSymbol, wNativeAddress, dustThresholdWei, chainType } = req.body;
         await getService().addChain(chainId, name, nativeSymbol, wNativeAddress, dustThresholdWei, chainType);
         res.status(200).json({ success: true, message: 'Chain added/updated' });
+    } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Registry Stats
+router.get('/stats', requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const data = await getService().getStats();
+        res.status(200).json({ success: true, data });
+    } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Invalidate Cache
+router.post('/invalidate', requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { ProtocolRegistry } = require('../services/classifier/infrastructure/ProtocolRegistry');
+        ProtocolRegistry.invalidate();
+        res.status(200).json({ success: true, message: 'Registry cache invalidated' });
     } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });
     }

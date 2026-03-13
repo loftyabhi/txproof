@@ -106,4 +106,38 @@ export class RegistryAdminService {
         await this.db.query(query, [sel, name, category, confidenceBoost, protocolId]);
         ProtocolRegistry.invalidate();
     }
+
+    async listAddresses(chainId: number): Promise<any[]> {
+        const query = `
+            SELECT a.*, p.slug as protocol_slug, p.name as protocol_name, p.category as protocol_category 
+            FROM protocol_addresses a 
+            JOIN protocols p ON p.id = a.protocol_id 
+            WHERE a.chain_id = $1 AND a.is_active = true
+        `;
+        const res = await this.db.query(query, [chainId]);
+        return res.rows;
+    }
+
+    async getStats(): Promise<any> {
+        const [protocols, addresses, events, selectors, chains] = await Promise.all([
+            this.db.query('SELECT COUNT(*) FROM protocols WHERE is_active = true'),
+            this.db.query('SELECT COUNT(*) FROM protocol_addresses WHERE is_active = true'),
+            this.db.query('SELECT COUNT(*) FROM event_signatures'),
+            this.db.query('SELECT COUNT(*) FROM function_selectors'),
+            this.db.query('SELECT chain_id, COUNT(*) as count FROM protocol_addresses WHERE is_active = true GROUP BY chain_id')
+        ]);
+
+        const chainBreakdown: Record<number, number> = {};
+        chains.rows.forEach(r => {
+            chainBreakdown[r.chain_id] = parseInt(r.count);
+        });
+
+        return {
+            totalProtocols: parseInt(protocols.rows[0].count),
+            totalAddresses: parseInt(addresses.rows[0].count),
+            totalEventSignatures: parseInt(events.rows[0].count),
+            totalSelectors: parseInt(selectors.rows[0].count),
+            chainBreakdown
+        };
+    }
 }

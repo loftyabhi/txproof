@@ -33,8 +33,11 @@ class LRUCache<K, V> {
 
     set(key: K, value: V): void {
         if (this.cache.size >= this.maxSize) {
-            const firstKey = this.cache.keys().next().value;
-            this.cache.delete(firstKey);
+            const keys = this.cache.keys();
+            const firstKey = keys.next().value;
+            if (firstKey !== undefined) {
+                this.cache.delete(firstKey);
+            }
         }
         this.cache.set(key, value);
     }
@@ -43,6 +46,8 @@ class LRUCache<K, V> {
 export class ClassificationEngine {
     private readonly rules: ClassificationRule[];
     private readonly cache: LRUCache<string, ClassificationResult>;
+
+    private static readonly MIN_CONFIDENCE = 0.55;
 
     constructor(
         private readonly registry: ProtocolRegistry,
@@ -97,7 +102,7 @@ export class ClassificationEngine {
             if (!rule.matches(ctx)) continue;
 
             const result = rule.classify(ctx);
-            if (result && result.confidence >= 0.50) {
+            if (result && result.confidence >= ClassificationEngine.MIN_CONFIDENCE) {
                 if (!bestRuleResult || result.confidence > bestRuleResult.confidence) {
                     bestRuleResult = result;
                     if (result.confidence >= 0.95) break; // short circuit

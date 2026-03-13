@@ -26,13 +26,14 @@ export class TransactionClassifierService {
      * Main entry point to classify a transaction.
      */
     async classifyTransaction(tx: Transaction, receipt: Receipt): Promise<ClassificationResult> {
+        if (!tx.chainId) throw new Error('Transaction must include chainId');
         try {
             const startStr = Date.now();
             const result = await this.engine.classify(tx, receipt);
             const duration = Date.now() - startStr;
 
             // Overlapping error guard: if somehow unknown gets emitted with bad confidence
-            if (result.confidence.score < 0.20 && result.functionalType !== TransactionType.UNCLASSIFIED_COMPLEX) {
+            if (result.confidence.score < 0.55 && result.functionalType !== TransactionType.UNCLASSIFIED_COMPLEX) {
                 return {
                     ...result,
                     functionalType: TransactionType.UNCLASSIFIED_COMPLEX,
