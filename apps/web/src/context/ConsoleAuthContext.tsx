@@ -135,6 +135,15 @@ export function ConsoleAuthProvider({ children }: { children: React.ReactNode })
 
     // Monitor Wallet Changes
     useEffect(() => {
+        // [Enterprise] Security Exception: Skip auto-logout check for public print views or iframes
+        // PDF previews often run in iframes where wallet connection (wagmi) might not be available or initialized.
+        const isPrintView = typeof window !== 'undefined' && window.location.pathname.startsWith('/print');
+        const isIframe = typeof window !== 'undefined' && window.self !== window.top;
+
+        if (isPrintView || isIframe) {
+            return;
+        }
+
         if (state.isAuthenticated && state.user && address) {
             // If connected wallet is different from session wallet, logout
             if (address.toLowerCase() !== state.user.wallet.toLowerCase()) {
