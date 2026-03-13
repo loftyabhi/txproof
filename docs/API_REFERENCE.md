@@ -21,7 +21,7 @@ Trigger the generation of a cryptographic receipt for a blockchain transaction.
 |---|---|---|
 | `txHash` | string | The transaction hash (0x...) or Farcaster Cast Hash (0x + 40 hex) |
 | `type` | string | The type of transaction to generate a receipt for. Possible values: <br> - `TOKEN_TRANSFER`: Basic ERC-20 transfer <br> - `SWAP`: Token exchange (Uniswap, etc.) <br> - `SOCIAL_CAST`: Farcaster social publication (Resolved via Neynar) <br> - `CONTRACT_INTERACTION`: General smart contract call |
-| `chainId` | number | The blockchain Chain ID (e.g. 8453 for Base). For Farcaster casts, use any supported chain. |
+| `chainId` | number | **Mandatory**. The blockchain Chain ID (e.g. 8453 for Base). See supported chains in `/health`. |
 
 ### Example Request
 ```bash
@@ -98,3 +98,23 @@ curl -X POST https://api.txproof.xyz/api/v1/verify/receipt \
   "verified_at": "2024-02-05T12:00:00Z"
 }
 ```
+
+---
+
+## 4. Admin Registry API (Restricted)
+Management endpoints for the protocol registry. Requires `Authorization: Bearer <ADMIN_TOKEN>`.
+
+### List Registered Addresses
+`GET /api/v1/registry/addresses/:chain`
+
+Returns all categorized addresses (dex, bridge, etc.) for a specific chain.
+
+### Get Registry Stats
+`GET /api/v1/registry/stats`
+
+Returns counts of protocols, addresses, and events across all chains.
+
+### Invalidate Cache
+`POST /api/v1/registry/invalidate`
+
+Force refresh the in-memory protocol registry from the database.

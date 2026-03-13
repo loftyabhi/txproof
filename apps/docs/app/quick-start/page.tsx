@@ -105,6 +105,14 @@ curl https://api.txproof.xyz/api/v1/bills/job/job_123
             </div>
 
             <section className="space-y-4">
+                <h2 className="text-2xl font-semibold">0. Get Supported Chains</h2>
+                <p className="text-muted-foreground">
+                    Discover which blockchain networks are currently supported by the platform.
+                </p>
+                <CodeBlock language="bash" code={`curl https://api.txproof.xyz/api/v1/chains`} filename="terminal" />
+            </section>
+
+            <section className="space-y-4">
                 <h2 className="text-2xl font-semibold">1. Start a Job</h2>
                 <p className="text-muted-foreground">
                     Submit the transaction hash and chain ID you want to generate a receipt for.

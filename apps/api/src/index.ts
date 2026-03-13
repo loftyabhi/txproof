@@ -33,6 +33,8 @@ import usageRouter from './routes/v1/usage'; // [NEW]
 import verificationRouter from './routes/v1/verification'; // [NEW]
 import { userRouter } from './routes/v1/userRouter'; // [NEW]
 import trackingRouter from './routes/v1/trackingRouter'; // [NEW - Elite]
+import registryRouter from './routes/registry'; // [NEW]
+import { chainRegistry } from './services/ChainRegistryService';
 
 dotenv.config();
 
@@ -131,6 +133,7 @@ app.use('/api/v1/usage', usageRouter); // [NEW]
 app.use('/api/v1/verify', verificationRouter); // [NEW]
 app.use('/api/v1/user', userRouter); // [NEW]
 app.use('/api/v1/email', trackingRouter); // [NEW - Elite]
+app.use('/api/v1/registry', registryRouter); // [NEW]
 // Note: Admin router mounted below after verifyAdmin definition
 
 
@@ -516,6 +519,28 @@ import { verifyAdmin } from './middleware/adminAuth';
 
 // SaaS Admin Dashboard
 app.use('/api/v1/admin', verifyAdmin, adminRouter);
+
+/**
+ * @api {get} /api/v1/chains List Supported Chains
+ * @apiDescription Returns a dynamic list of blockchain networks supported by the platform.
+ */
+app.get('/api/v1/chains', async (req, res) => {
+    try {
+        const chains = await chainRegistry.getChains();
+        res.json({
+            success: true,
+            chains: chains.map(c => ({
+                id: c.chainId,
+                name: c.name,
+                symbol: c.currencySymbol,
+                icon: c.config.iconUrl || '⛓️',
+                explorer: c.explorerUrl
+            }))
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to load chains' });
+    }
+});
 
 
 // Ads

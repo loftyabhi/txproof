@@ -42,7 +42,49 @@ export default function Reference() {
                 </p>
                 <div className="flex gap-2 text-sm">
                     <div className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded">Live v1</div>
+                    <div className="px-2 py-1 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 rounded">Multi-Chain Ready</div>
                 </div>
+            </div>
+
+            {/* --- INFRASTRUCTURE --- */}
+            <div className="space-y-6">
+                <h2 className="text-2xl font-bold border-b pb-2">Infrastructure</h2>
+
+                {/* GET /chains */}
+                <Endpoint method="GET" path="/api/v1/chains">
+                    <div className="space-y-6">
+                        <p className="text-muted-foreground leading-relaxed">
+                            Returns a dynamic list of blockchain networks supported by the platform. 
+                            Use this to populate network selectors in your UI.
+                        </p>
+
+                        <Tabs items={[
+                            {
+                                label: 'Response',
+                                value: 'res',
+                                content: <CodeBlock language="json" code={`{
+  "success": true,
+  "chains": [
+    {
+      "id": 1,
+      "name": "Ethereum",
+      "symbol": "ETH",
+      "icon": "🔷",
+      "explorer": "etherscan.io"
+    },
+    {
+      "id": 8453,
+      "name": "Base",
+      "symbol": "ETH",
+      "icon": "🔵",
+      "explorer": "basescan.org"
+    }
+  ]
+}`} />
+                            }
+                        ]} />
+                    </div>
+                </Endpoint>
             </div>
 
             {/* --- RECEIPT GENERATION --- */}

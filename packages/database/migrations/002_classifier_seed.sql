@@ -330,7 +330,7 @@ INSERT INTO tmp_selectors (selector, name, category, confidence_boost) VALUES
 
 INSERT INTO function_selectors (selector, name, category, confidence_boost)
 SELECT selector, name, category, confidence_boost FROM tmp_selectors
-ON CONFLICT (selector) DO NOTHING;
+ON CONFLICT (selector) WHERE protocol_id IS NULL DO NOTHING;
 
 DROP TABLE tmp_protocols;
 DROP TABLE tmp_addresses;

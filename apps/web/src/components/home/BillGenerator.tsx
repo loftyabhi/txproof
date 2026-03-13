@@ -22,6 +22,34 @@ export function BillGenerator() {
     const [pdfUrl, setPdfUrl] = useState('');
     const [chainId, setChainId] = useState(8453);
     const [showLoginModal, setShowLoginModal] = useState(false);
+    const [chains, setChains] = useState<{ id: number; name: string; icon: string }[]>([]);
+
+    useEffect(() => {
+        const fetchChains = async () => {
+            try {
+                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://api.txproof.xyz'}/api/v1/chains`);
+                const data = await res.json();
+                if (data.success && data.chains) {
+                    setChains(data.chains);
+                } else {
+                    throw new Error('API failed');
+                }
+            } catch (error) {
+                console.error('Failed to fetch dynamic chains, using default list', error);
+                setChains([
+                    { id: 1, name: 'Ethereum', icon: '🔷' },
+                    { id: 8453, name: 'Base', icon: '🔵' },
+                    { id: 137, name: 'Polygon', icon: '🟣' },
+                    { id: 42161, name: 'Arbitrum', icon: '💙' },
+                    { id: 10, name: 'Optimism', icon: '🔴' },
+                    { id: 56, name: 'BSC', icon: '🟡' },
+                    { id: 43114, name: 'Avax', icon: '🔺' },
+                    { id: 11155111, name: 'Sepolia', icon: '🧪' }
+                ]);
+            }
+        };
+        fetchChains();
+    }, []);
 
     // Debug logging for state
     useEffect(() => {
@@ -351,17 +379,16 @@ export function BillGenerator() {
                     <select
                         id="chain-select-mobile"
                         value={chainId}
-                        onChange={(e) => handleChainChange(Number(e.target.value))}
+                        onChange={(e) => setChainId(Number(e.target.value))}
                         className="bg-white/5 text-white outline-none border border-white/10 rounded-lg px-4 py-2 font-medium cursor-pointer text-sm uppercase tracking-wide [&>option]:bg-zinc-900"
                     >
-                        <option value={8453}>Base</option>
-                        <option value={1}>Ethereum</option>
-                        <option value={137}>Polygon</option>
-                        <option value={42161}>Arbitrum</option>
-                        <option value={10}>Optimism</option>
-                        <option value={56}>BSC</option>
-                        <option value={43114}>Avax</option>
-                        <option value={11155111}>Sepolia</option>
+                        {chains.length > 0 ? (
+                            chains.map(c => (
+                                <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+                            ))
+                        ) : (
+                            <option value={8453}>... Loading Chains</option>
+                        )}
                     </select>
                 </div>
 

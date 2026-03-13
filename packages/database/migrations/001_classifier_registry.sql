@@ -98,6 +98,11 @@ CREATE TABLE IF NOT EXISTS function_selectors (
     CONSTRAINT uq_selector_protocol UNIQUE (selector, protocol_id)
 );
 
+-- Add unique index for protocol-less selectors to allow ON CONFLICT correctly
+CREATE UNIQUE INDEX IF NOT EXISTS uq_selector_no_protocol 
+    ON function_selectors(selector) 
+    WHERE protocol_id IS NULL;
+
 -- ── INDEXES ──────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_protocol_addresses_chain_address 
     ON protocol_addresses(chain_id, address) WHERE is_active = TRUE;

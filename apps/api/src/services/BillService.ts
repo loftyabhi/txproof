@@ -1,9 +1,10 @@
-﻿import { ethers } from 'ethers';
+import { ethers } from 'ethers';
 import fs from 'fs';
 import path from 'path';
 import { PriceOracleService } from './PriceOracleService';
 import { TemplateService } from './TemplateService'; // [NEW]
 import { RPC_URLS } from '../config/supportedChains';
+import { chainRegistry } from './ChainRegistryService';
 import { transactionClassifier, ClassificationResult, ExecutionType, TransactionEnvelopeType } from './TransactionClassifier';
 import { AdminService } from './AdminService';
 import { UserService } from './UserService';
@@ -198,17 +199,9 @@ const formatUsd = (val: number): string => {
     return val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-const getChainIcon = (chainId: number): string => {
-    switch (chainId) {
-        case 1: return "🔷"; // Ethereum
-        case 8453: return "🔵"; // Base
-        case 137: return "🟣"; // Polygon
-        case 10: return "🔴"; // Optimism
-        case 42161: return "💙"; // Arbitrum
-        case 56: return "🟡"; // BSC
-        case 43114: return "🔺"; // Avalanche
-        default: return "⛓️";
-    }
+const getChainIcon = async (chainId: number): Promise<string> => {
+    const chain = await chainRegistry.getChain(chainId);
+    return chain?.config.iconUrl || "⛓️";
 };
 
 // --- Service ---
@@ -218,7 +211,7 @@ export class BillService {
     private adminService: AdminService;
     private templateService: TemplateService; // [NEW]
 
-    private rpcs: { [key: number]: string } = RPC_URLS;
+    private rpcs: { [key: number]: string } = {};
 
     private alchemyCallsMade = false;
 
@@ -252,7 +245,7 @@ export class BillService {
         }
 
         // 1. Fetch Block to find full Tx Hash
-        const provider = this.getRpcProvider(chainId);
+        const provider = await this.getRpcProvider(chainId);
         const block = await provider.getBlock(blockNumber);
 
         if (!block) throw new Error('Block not found on chain');
@@ -323,7 +316,7 @@ export class BillService {
         try {
             // 1. Fetch Basic Info first (Cost: 1 RPC Call) to derive the ID
             // We need Block Number to construct the standard Bill ID
-            const provider = this.getRpcProvider(chainId);
+            const provider = await this.getRpcProvider(chainId);
             const receipt = await provider.getTransactionReceipt(txHash);
 
             if (!receipt) throw new Error('Transaction Receipt not found');
@@ -682,10 +675,10 @@ export class BillService {
     // --- Data Fetching ---
 
     private async fetchTransactionData(txHash: string, chainId: number) {
-        const rpcUrl = this.getRpcUrl(chainId);
+        const rpcUrl = await this.getRpcUrl(chainId);
         if (!rpcUrl) throw new Error(`Unsupported Chain ID: ${chainId}`);
 
-        const provider = this.getRpcProvider(chainId);
+        const provider = await this.getRpcProvider(chainId);
         const [tx, receipt] = await Promise.all([
             provider.getTransaction(txHash),
             provider.getTransactionReceipt(txHash)
@@ -802,15 +795,6 @@ export class BillService {
     // --- Valuation & Direction (Enterprise Layer) ---
 
     private providerCache: Map<number, ethers.JsonRpcProvider> = new Map();
-
-    private getRpcProvider(chainId: number): ethers.JsonRpcProvider {
-        if (!this.providerCache.has(chainId)) {
-            const url = this.getRpcUrl(chainId);
-            // Use static network to avoid automatic network detection overhead
-            this.providerCache.set(chainId, new ethers.JsonRpcProvider(url, undefined, { staticNetwork: true }));
-        }
-        return this.providerCache.get(chainId)!;
-    }
 
     // --- Valuation & Direction (Enterprise Layer) ---
 
@@ -1029,7 +1013,7 @@ export class BillService {
         const netChange = totalIn - (totalOut + feeData.feeUsdNum);
 
         const randomAd = await this.adminService.getRandomAd('pdf');
-        const qrCodeDataUrl = await QRCode.toDataURL(this.getExplorerUrl(chainId, tx.hash));
+        const qrCodeDataUrl = await QRCode.toDataURL(await this.getExplorerUrl(chainId, tx.hash));
 
         // --- Enterprise Mapping Logic ---
 
@@ -1091,7 +1075,7 @@ export class BillService {
             CHAIN_SYMBOL: this.getNativeSymbol(chainId),
             CONTRACT_ADDRESS: "0x...", // populated if needed or generic
             DATE: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-            CHAIN_ICON: getChainIcon(chainId),
+            CHAIN_ICON: await getChainIcon(chainId),
             HOME_URL: process.env.FRONTEND_URL || 'http://localhost:3000',
             TRANSACTION_HASH: tx.hash,
             BLOCK_NUMBER: receipt.blockNumber.toLocaleString(),
@@ -1130,7 +1114,7 @@ export class BillService {
             RPC_PROVIDER: "Enterprise RPC",
             CONFIDENCE_PERCENT: Math.round(classification.confidence.score * 100),
             QR_CODE_DATA_URL: qrCodeDataUrl,
-            EXPLORER_URL: this.getExplorerUrl(chainId, tx.hash),
+            EXPLORER_URL: await this.getExplorerUrl(chainId, tx.hash),
             hasAd: !!randomAd,
             adUrl: randomAd?.clickUrl || "",
             adId: randomAd?.id ? String(randomAd.id) : undefined,
@@ -1152,9 +1136,20 @@ export class BillService {
     // --- Render (REMOVED) ---
     // private async renderPdfBuffer(data: BillViewModel): Promise<Uint8Array> { ... }
 
+    public async getRpcProvider(chainId: number): Promise<ethers.JsonRpcProvider> {
+        if (!this.providerCache.has(chainId)) {
+            const url = await this.getRpcUrl(chainId);
+            this.providerCache.set(chainId, new ethers.JsonRpcProvider(url, undefined, { staticNetwork: true }));
+        }
+        return this.providerCache.get(chainId)!;
+    }
+
     // --- Helpers (Private) ---
 
-    private getRpcUrl(chainId: number): string {
+    private async getRpcUrl(chainId: number): Promise<string> {
+        const chain = await chainRegistry.getChain(chainId);
+        if (chain?.config.rpcUrl) return chain.config.rpcUrl;
+
         const k = process.env.ALCHEMY_API_KEY;
         if (k && this.isAlchemySupported(chainId)) {
             switch (chainId) {
@@ -1188,19 +1183,17 @@ export class BillService {
         return 'ETH';
     }
 
-    private getExplorerUrl(chainId: number, hash: string) {
-        let domain = 'etherscan.io';
-        if (chainId === 8453) domain = 'basescan.org';
-        if (chainId === 10) domain = 'optimistic.etherscan.io';
-        if (chainId === 137) domain = 'polygonscan.com';
-        if (chainId === 42161) domain = 'arbiscan.io';
+    private async getExplorerUrl(chainId: number, hash: string) {
+        const chain = await chainRegistry.getChain(chainId);
+        const domain = chain?.explorerUrl || 'etherscan.io';
+        if (domain.startsWith('http')) return `${domain}/tx/${hash}`;
         return `https://${domain}/tx/${hash}`;
     }
 
     private async resolveNames(from: string, to: string | null, chain: number) {
         // Optimization: Cache this provider too? Or is it mainnet specific?
         // Usually resolveNames uses Mainnet.
-        const p = this.getRpcProvider(1);
+        const p = await this.getRpcProvider(1);
         const resolve = async (a: string) => {
             try {
                 const name = await p.lookupAddress(a);

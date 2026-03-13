@@ -104,6 +104,9 @@ When an event occurs, TxProof sends a `POST` request to your configured URL.
 }
 ```
 
+> [!NOTE]
+> **Classifier Upgrades**: The `billData` JSON now includes a structured `classification` object with `confidence` scores and `functionalType`. Confidence levels of 0.55+ are considered verified.
+
 > [!TIP]
 > Use the `bill_id` from the webhook to fetch the full `billData` schema from the API if required for your database.
 

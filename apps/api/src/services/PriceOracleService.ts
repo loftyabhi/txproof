@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { chainRegistry } from './ChainRegistryService';
 
 // Make Redis optional - will gracefully degrade to no caching if not available
 type RedisClient = any;
@@ -86,7 +87,7 @@ export class PriceOracleService {
             supportsHistorical: true,
             supportsCurrent: false,
             minGranularitySeconds: 3600, // 1h buckets
-            supportedChains: [1, 137, 10, 42161, 8453, 11155111],
+            supportedChains: [], // Resolved dynamically via config.alchemyNetwork
             supportedAssets: 'both'
         },
         {
@@ -232,7 +233,7 @@ export class PriceOracleService {
         // DETERMINISTIC FALLBACK: Alchemy -> DeFiLlama -> Coingecko
 
         // 1. Alchemy
-        if (blockNumber && this.isProviderCapable('Alchemy', chainId)) {
+        if (blockNumber && await this.isProviderCapable('Alchemy', chainId)) {
             try {
                 const alchemyPrice = await this.getAlchemyPrice(chainId, tokenAddress, blockNumber, targetTime);
                 result = this.formatResult(alchemyPrice.price, PriceMode.HISTORICAL, 'Alchemy', alchemyPrice.timestamp, targetTime, 0.95);
@@ -372,20 +373,28 @@ export class PriceOracleService {
         };
     }
 
-    private isProviderCapable(providerName: string, chainId: number): boolean {
+    private async isProviderCapable(providerName: string, chainId: number): Promise<boolean> {
         const caps = this.providers.find(p => p.name === providerName);
         if (!caps) return false;
-        if (caps.supportedChains.length > 0 && !caps.supportedChains.includes(chainId)) return false;
+        
+        const chain = await chainRegistry.getChain(chainId);
+        if (!chain) return false;
+
+        if (providerName === 'Alchemy') return !!chain.config.alchemyNetwork;
+        if (providerName === 'DeFiLlama') return !!chain.config.coingeckoPlatform; // fallback or explicit llama key
+        
         return true;
     }
 
     // --- Underlying Provider Implementations ---
 
     private async getAlchemyPrice(chainId: number, tokenAddress: string, blockNumber: number, timestamp: number): Promise<{ price: number, timestamp: number }> {
-        const apiKey = process.env.ALCHEMY_API_KEY || process.env.ALCHEMY_API_KEY;
+        const apiKey = process.env.ALCHEMY_API_KEY;
         if (!apiKey) throw new Error('No Alchemy API Key found');
         const baseUrl = `https://api.g.alchemy.com/prices/v1/${apiKey}/tokens/historical`;
-        const network = this.getAlchemyNetwork(chainId);
+        
+        const chain = await chainRegistry.getChain(chainId);
+        const network = chain?.config.alchemyNetwork;
         if (!network) throw new Error(`Chain ${chainId} not supported by Alchemy Prices API`);
 
         let queryAddress = tokenAddress;
@@ -421,7 +430,8 @@ export class PriceOracleService {
     }
 
     private async getCoingeckoPrice(chainId: number, tokenAddress: string, timestamp: number): Promise<{ price: number, timestamp: number }> {
-        const platform = this.getCoingeckoPlatform(chainId);
+        const chain = await chainRegistry.getChain(chainId);
+        const platform = chain?.config.coingeckoPlatform || 'ethereum';
         const date = new Date(timestamp * 1000);
         const dateStr = `${date.getDate()}-${date.getMonth() + 1}-${date.getFullYear()}`;
         let url;
@@ -440,7 +450,8 @@ export class PriceOracleService {
     }
 
     private async getDefiLlamaPrice(chainId: number, tokenAddress: string, timestamp: number): Promise<{ price: number, timestamp: number }> {
-        const chainPrefix = this.getDefiLlamaChain(chainId);
+        const chain = await chainRegistry.getChain(chainId);
+        const chainPrefix = chain?.config.coingeckoPlatform || 'ethereum'; // DeFiLlama often uses same slugs
         const address = tokenAddress === 'native' ? '0x0000000000000000000000000000000000000000' : tokenAddress;
 
         const url = `https://coins.llama.fi/prices/historical/${timestamp}/${chainPrefix}:${address}`;
@@ -462,54 +473,17 @@ export class PriceOracleService {
         return { price, timestamp: Math.floor(Date.now() / 1000) };
     }
 
-    private getAlchemyNetwork(chainId: number): string | null {
-        switch (chainId) {
-            case 1: return 'eth-mainnet';
-            case 137: return 'polygon-mainnet';
-            case 10: return 'opt-mainnet';
-            case 42161: return 'arb-mainnet';
-            case 8453: return 'base-mainnet';
-            case 11155111: return 'eth-sepolia';
-            default: return null;
-        }
-    }
-
     private getCoingeckoNativeId(chainId: number): string {
         switch (chainId) {
             case 137: return 'matic-network';
             case 56: return 'binancecoin';
             case 43114: return 'avalanche-2';
-            case 1: case 8453: case 10: case 42161: default: return 'ethereum';
-        }
-    }
-
-    private getCoingeckoPlatform(chainId: number): string {
-        switch (chainId) {
-            case 1: return 'ethereum';
-            case 8453: return 'base';
-            case 137: return 'polygon-pos';
-            case 10: return 'optimistic-ethereum';
-            case 42161: return 'arbitrum-one';
-            case 56: return 'binance-smart-chain';
-            case 43114: return 'avalanche';
-            default: return 'ethereum';
-        }
-    }
-
-    private getDefiLlamaChain(chainId: number): string {
-        switch (chainId) {
-            case 1: return 'ethereum';
-            case 8453: return 'base';
-            case 137: return 'polygon';
-            case 10: return 'optimism';
-            case 42161: return 'arbitrum';
-            case 56: return 'bsc';
-            case 43114: return 'avax';
             default: return 'ethereum';
         }
     }
 
     private getWrappedNativeAddress(chainId: number): string | null {
+        // Native mapping can also be dynamic if added to config_json
         switch (chainId) {
             case 1: return '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'; // WETH
             case 8453: return '0x4200000000000000000000000000000000000006'; // WETH (Base)

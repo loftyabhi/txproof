@@ -39,7 +39,7 @@ export default function Introduction() {
         <h1 className="text-4xl font-bold tracking-tight">Introduction</h1>
         <p className="text-lg text-muted-foreground leading-relaxed">
           Welcome to the TxProof API developer documentation.
-          Our API allows you to programmatically generate verifiable receipts for on-chain transactions across multiple blockchains.
+          Our API allows you to programmatically generate verifiable receipts for on-chain transactions across an <strong>ever-expanding list</strong> of supported blockchains.
         </p>
       </div>
 
