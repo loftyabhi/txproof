@@ -1,30 +1,20 @@
-// src/services/classifier/core/Rule.ts
+// ═══ FILE: core/Rule.ts ═══
 import { ClassificationContext } from './Context';
-import { ConfidenceBreakdown, TransactionType } from './types';
+import { RuleResult } from './types';
 
-export interface RuleResult {
-    type: TransactionType;
-    confidence: number;
-    breakdown: ConfidenceBreakdown;
-    protocol?: string; // Name of the detected protocol
-    reasons: string[];
-    secondary?: boolean;
-    evidence?: string[];
-}
-
+/**
+ * Interface for all classification rules.
+ */
 export interface ClassificationRule {
-    id: string; // Unique, stable ID, e.g., 'dex_uniswap_v2'
-    name: string; // Human readable name
-    priority: number; // Execution Order (Higher = Earlier)
+    /** Unique rule identifier, e.g. 'core_contract_creation' */
+    readonly id: string;
 
-    /**
-     * Pure function to check if rule matches context.
-     * Must not have side effects.
-     */
+    /** Priority 0-100. Higher priority rules are executed first and win ties. */
+    readonly priority: number;
+
+    /** Synchronous, fast check if this rule could apply. */
     matches(ctx: ClassificationContext): boolean;
 
-    /**
-     * Deep evaluation of the rule to produce result.
-     */
-    classify(ctx: ClassificationContext): RuleResult;
+    /** Synchronous, full classification. Returns result or null if no match. */
+    classify(ctx: ClassificationContext): RuleResult | null;
 }

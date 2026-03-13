@@ -1,147 +1,90 @@
+// ═══ FILE: TransactionClassifier.ts ═══
+import { Transaction, Receipt, ClassificationResult, TransactionType, ExecutionType, TransactionEnvelopeType } from './classifier/core/types';
+import { ProtocolRegistry } from './classifier/infrastructure/ProtocolRegistry';
 import { ClassificationEngine } from './classifier/core/Engine';
-import { TransactionType, ExecutionType, ClassificationResult, TransactionEnvelopeType } from './classifier/core/types';
-
-// Re-export types for consumers
-export { TransactionType, ExecutionType, TransactionEnvelopeType };
-export type { ClassificationResult };
-
-const engine = new ClassificationEngine();
+import { getDatabasePool } from '../utils/db'; // Corrected path
 
 export class TransactionClassifierService {
-    /**
-     * Main classification method
-     */
-    async classify(
-        receipt: any,
-        transaction: any,
-        chainId: number,
-    ): Promise<ClassificationResult> {
-        // 1. Safety & Orchestration: Explicit Engine Call
-        // We pass chainId and txHash (via transaction object) to ensure cache correctness logic in Engine triggers correctly.
-        const result = await engine.classify(transaction, receipt, chainId);
+    private engine: ClassificationEngine;
 
-        // 2. Final Output Guards
-        // If Engine returned UNCLASSIFIED_COMPLEX, propagate immediately.
-        if (result.functionalType === TransactionType.UNCLASSIFIED_COMPLEX) {
+    constructor() {
+        const dbPool = getDatabasePool(); // Assume this gets the pg.Pool instance
+        const registry = new ProtocolRegistry(dbPool);
+
+        // LRU Cache implicitly inside engine
+        this.engine = new ClassificationEngine(registry, 10000);
+    }
+
+    /**
+     * Manually invalidate the internal engine/registry cache.
+     */
+    async invalidateCache(): Promise<void> {
+        ProtocolRegistry.invalidate();
+    }
+
+    /**
+     * Main entry point to classify a transaction.
+     */
+    async classifyTransaction(tx: Transaction, receipt: Receipt): Promise<ClassificationResult> {
+        try {
+            const startStr = Date.now();
+            const result = await this.engine.classify(tx, receipt);
+            const duration = Date.now() - startStr;
+
+            // Overlapping error guard: if somehow unknown gets emitted with bad confidence
+            if (result.confidence.score < 0.20 && result.functionalType !== TransactionType.UNCLASSIFIED_COMPLEX) {
+                return {
+                    ...result,
+                    functionalType: TransactionType.UNCLASSIFIED_COMPLEX,
+                    confidence: {
+                        score: 0,
+                        reasons: ['Overridden by classifier guard. Score too low.']
+                    }
+                };
+            }
+
+            // Could emit metrics here (duration, confidence hit misses, etc.)
+
             return result;
+        } catch (error: any) {
+            console.error(`[TransactionClassifier] Fatal error classifying tx ${tx.hash}:`, error);
+            throw error;
         }
-
-        // If primary confidence is below threshold (0.55), force UNCLASSIFIED_COMPLEX
-        // This acts as a final safety net downstream of the Engine.
-        if (result.confidence.score < 0.55) {
-            // Preserve secondary results if they exist (verbatim)
-            return {
-                ...result,
-                functionalType: TransactionType.UNCLASSIFIED_COMPLEX,
-                protocol: undefined, // Clear protocol if low confidence
-                confidence: {
-                    ...result.confidence,
-                    reasons: ['Low confidence fallback (Classifier Guard)', ...result.confidence.reasons]
-                }
-            };
-        }
-
-        // 3. Return accepted result verbatim
-        // (No re-ranking, no re-computation)
-        return result;
     }
 
     /**
-     * Get human-readable label for transaction type
+     * Legacy wrapper for older usage. Maps ethers types to core types.
      */
+    async classify(receipt: any, tx: any, chainId: number): Promise<ClassificationResult> {
+        return this.classifyTransaction(
+            { ...tx, hash: tx.hash, from: tx.from, to: tx.to, value: tx.value?.toString(), data: tx.data, chainId, nonce: tx.nonce, gasLimit: tx.gasLimit?.toString() } as any,
+            { ...receipt, status: receipt.status, logs: receipt.logs, from: receipt.from, contractAddress: receipt.contractAddress, gasUsed: receipt.gasUsed?.toString() } as any
+        );
+    }
+
     getTypeLabel(type: TransactionType): string {
-        const typeMap: Record<string, string> = {
-            [TransactionType.TOKEN_TRANSFER]: 'Token Transfer',
-            [TransactionType.TOKEN_APPROVAL]: 'Token Approval',
-            [TransactionType.TOKEN_MINT]: 'Token Mint',
-            [TransactionType.TOKEN_BURN]: 'Token Burn',
-            [TransactionType.SWAP]: 'Swap',
-            [TransactionType.ADD_LIQUIDITY]: 'Add Liquidity',
-            [TransactionType.REMOVE_LIQUIDITY]: 'Remove Liquidity',
-            [TransactionType.NFT_MINT]: 'NFT Mint',
-            [TransactionType.NFT_TRANSFER]: 'NFT Transfer',
-            [TransactionType.NFT_SALE]: 'NFT Sale',
-            [TransactionType.NFT_LISTING]: 'NFT Listing',
-            [TransactionType.NFT_CANCEL_LISTING]: 'Cancel NFT Listing',
-            [TransactionType.NFT_BID]: 'NFT Bid',
-            [TransactionType.LENDING_DEPOSIT]: 'Lending Deposit',
-            [TransactionType.LENDING_WITHDRAW]: 'Lending Withdraw',
-            [TransactionType.LENDING_BORROW]: 'Borrow',
-            [TransactionType.LENDING_REPAY]: 'Repay Loan',
-            [TransactionType.LENDING_LIQUIDATION]: 'Liquidation',
-            [TransactionType.STAKING_DEPOSIT]: 'Stake',
-            [TransactionType.STAKING_WITHDRAW]: 'Unstake',
-            [TransactionType.STAKING_CLAIM_REWARDS]: 'Claim Staking Rewards',
-            [TransactionType.BRIDGE_DEPOSIT]: 'Bridge Deposit',
-            [TransactionType.BRIDGE_WITHDRAW]: 'Bridge Withdraw',
-            [TransactionType.CONTRACT_DEPLOYMENT]: 'Contract Deployment',
-            [TransactionType.CONTRACT_INTERACTION]: 'Contract Interaction',
-            [TransactionType.NATIVE_TRANSFER]: 'Native Transfer',
-            [TransactionType.BULK_TRANSFER]: 'Bulk Transfer',
-            [TransactionType.GOVERNANCE_VOTE]: 'Governance Vote',
-            [TransactionType.GOVERNANCE_PROPOSAL]: 'Create Proposal',
-            [TransactionType.GOVERNANCE_DELEGATION]: 'Delegate Votes',
-            [TransactionType.GOVERNANCE_EXECUTION]: 'Execute Proposal',
-            [TransactionType.L2_DEPOSIT]: 'L2 Deposit',
-            [TransactionType.L2_WITHDRAWAL]: 'L2 Withdrawal',
-            [TransactionType.L2_PROVE_WITHDRAWAL]: 'Prove L2 Withdrawal',
-            [TransactionType.L2_FINALIZE_WITHDRAWAL]: 'Finalize L2 Withdrawal',
-            [TransactionType.SOCIAL_CAST]: 'Farcaster Cast',
-            [TransactionType.UNCLASSIFIED_COMPLEX]: 'Complex Transaction',
-            [TransactionType.UNKNOWN]: 'Unknown Transaction',
-        };
-
-        return typeMap[type] || 'Unknown';
+        switch (type) {
+            case TransactionType.SOCIAL_CAST: return 'Social Cast';
+            case TransactionType.NATIVE_TRANSFER: return 'Native Transfer';
+            case TransactionType.TOKEN_TRANSFER: return 'Token Transfer';
+            case TransactionType.SWAP: return 'Swap';
+            case TransactionType.NFT_SALE: return 'NFT Sale';
+            default: return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        }
     }
 
-    /**
-     * Get emoji icon for transaction type
-     */
     getTypeIcon(type: TransactionType): string {
-        const iconMap: Record<string, string> = {
-            [TransactionType.TOKEN_TRANSFER]: '↔',
-            [TransactionType.TOKEN_APPROVAL]: '✓',
-            [TransactionType.TOKEN_MINT]: '+',
-            [TransactionType.TOKEN_BURN]: '×',
-            [TransactionType.SWAP]: '↔',
-            [TransactionType.ADD_LIQUIDITY]: '+',
-            [TransactionType.REMOVE_LIQUIDITY]: '-',
-            [TransactionType.NFT_MINT]: '◆',
-            [TransactionType.NFT_TRANSFER]: '→',
-            [TransactionType.NFT_SALE]: '◆',
-            [TransactionType.NFT_LISTING]: '≡',
-            [TransactionType.NFT_CANCEL_LISTING]: '×',
-            [TransactionType.NFT_BID]: '●',
-            [TransactionType.LENDING_DEPOSIT]: '↓',
-            [TransactionType.LENDING_WITHDRAW]: '↑',
-            [TransactionType.LENDING_BORROW]: '↓',
-            [TransactionType.LENDING_REPAY]: '↑',
-            [TransactionType.LENDING_LIQUIDATION]: '!',
-            [TransactionType.STAKING_DEPOSIT]: '■',
-            [TransactionType.STAKING_WITHDRAW]: '□',
-            [TransactionType.STAKING_CLAIM_REWARDS]: '+',
-            [TransactionType.BRIDGE_DEPOSIT]: '→',
-            [TransactionType.BRIDGE_WITHDRAW]: '←',
-            [TransactionType.CONTRACT_DEPLOYMENT]: '⚙',
-            [TransactionType.CONTRACT_INTERACTION]: '⚙',
-            [TransactionType.NATIVE_TRANSFER]: '↔',
-            [TransactionType.BULK_TRANSFER]: '≡',
-            [TransactionType.GOVERNANCE_VOTE]: '✓',
-            [TransactionType.GOVERNANCE_PROPOSAL]: '≡',
-            [TransactionType.GOVERNANCE_DELEGATION]: '→',
-            [TransactionType.GOVERNANCE_EXECUTION]: '!',
-            [TransactionType.L2_DEPOSIT]: '↓',
-            [TransactionType.L2_WITHDRAWAL]: '↑',
-            [TransactionType.L2_PROVE_WITHDRAWAL]: '?',
-            [TransactionType.L2_FINALIZE_WITHDRAWAL]: '✓',
-            [TransactionType.SOCIAL_CAST]: '🗨️',
-            [TransactionType.UNCLASSIFIED_COMPLEX]: '?',
-            [TransactionType.UNKNOWN]: '?',
-        };
-
-        return iconMap[type] || '?';
+        switch (type) {
+            case TransactionType.SOCIAL_CAST: return '💬';
+            case TransactionType.NATIVE_TRANSFER: return '💸';
+            case TransactionType.TOKEN_TRANSFER: return '🪙';
+            case TransactionType.SWAP: return '🔄';
+            case TransactionType.NFT_SALE: return '🖼️';
+            default: return '📄';
+        }
     }
 }
 
-// Export singleton instance
 export const transactionClassifier = new TransactionClassifierService();
+export { TransactionType, ExecutionType, TransactionEnvelopeType };
+export type { ClassificationResult };

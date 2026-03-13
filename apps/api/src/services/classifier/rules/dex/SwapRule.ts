@@ -1,116 +1,130 @@
-// src/services/classifier/rules/dex/SwapRule.ts
-import { ClassificationRule, RuleResult } from '../../core/Rule';
+// ═══ FILE: rules/dex/SwapRule.ts ═══
+import { BaseRule } from '../../core/BaseRule';
 import { ClassificationContext } from '../../core/Context';
-import { TransactionType } from '../../core/types';
+import { RuleResult, TransactionType } from '../../core/types';
+import { ConfidenceBuilder } from '../../core/ConfidenceBuilder';
 
-const SWAP_EVENTS = [
-    '0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822', // Uniswap V2: Swap
-    '0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67', // Uniswap V3: Swap
-    '0xc4d252f84c8a7b193efff4263a3e6b7d2f31f9d45d3153e70d4d8c6d1e44f8e7', // Balancer / Curve
-    '0x087e682a9db3d440875c75567c29378626c9a9415c4856b3e71783f98285559d', // 1inch Swapped
-];
-
-// Minimal amount to consider meaningful (to ignore dust)
-const MIN_SWAP_VALUE = BigInt(1000); // Very loose threshold, handles most 18-dec tokens (> 0.000...1)
-
-export class SwapRule implements ClassificationRule {
-    id = 'dex_swap';
-    name = 'DEX Swap';
-    priority = 90; // High priority for Protocol Semantic
+export class SwapRule extends BaseRule {
+    readonly id = 'swap';
+    readonly priority = 80;
 
     matches(ctx: ClassificationContext): boolean {
-        // Fix 3: Event Presence Is a Boost, Not a Gate
-        // Match if:
-        // 1. Known Swap Events exist
-        // 2. OR Bidirectional Token Flow exists (Aggregator / Unknown DEX support)
+        const hasEvents = this.getEventsByCategory(ctx, 'dex_swap').length > 0 ||
+            this.getEventsByCategory(ctx, 'dex_liquidity_add').length > 0 ||
+            this.getEventsByCategory(ctx, 'dex_liquidity_remove').length > 0;
 
-        if (ctx.receipt.logs.some(l => SWAP_EVENTS.includes(l.topics[0]))) return true;
+        if (hasEvents || ctx.targetIsCategory('dex')) return true;
 
-        const sender = ctx.tx.from.toLowerCase();
-        const flow = ctx.flow[sender];
-        if (flow) {
-            // Must have Incoming AND Outgoing for a potential swap
-            if (flow.incoming.length > 0 && flow.outgoing.length > 0) return true;
-        }
+        const sel = ctx.resolveSelector();
+        const flow = this.getMeaningfulFlow(ctx);
+        const isBidirectional = flow && flow.netOut.length > 0 && flow.netIn.length > 0;
+
+        if (sel && sel.category.startsWith('dex_') && isBidirectional) return true;
 
         return false;
     }
 
-    classify(ctx: ClassificationContext): RuleResult {
-        const swapLogs = ctx.receipt.logs.filter(l => SWAP_EVENTS.includes(l.topics[0]));
-        const sender = ctx.tx.from.toLowerCase();
-        const flow = ctx.flow[sender];
-        const reasons: string[] = [];
+    classify(ctx: ClassificationContext): RuleResult | null {
+        if (!this.matches(ctx)) return this.noMatch();
 
-        // 1. Event Match (Boost)
-        let eventMatch = 0.0;
-        let confidence = 0.0; // Start at 0, require flow evidence
+        const flow = this.getMeaningfulFlow(ctx);
+        const hasOut = flow && flow.netOut.length > 0;
+        const hasIn = flow && flow.netIn.length > 0;
+        const isBidirectional = hasOut && hasIn;
+        const isUnidirectionalOut = hasOut && !hasIn;
+        const isUnidirectionalIn = hasIn && !hasOut;
 
-        if (swapLogs.length > 0) {
-            eventMatch = 1.0;
-            confidence += 0.25; // Base boost for detecting a Swap event
-            reasons.push(`Matched ${swapLogs.length} Swap events`);
+        const swapEvents = this.getEventsByCategory(ctx, 'dex_swap');
+        const addLiqEvents = this.getEventsByCategory(ctx, 'dex_liquidity_add');
+        const remLiqEvents = this.getEventsByCategory(ctx, 'dex_liquidity_remove');
+
+        let subType: TransactionType | undefined;
+
+        if (addLiqEvents.length > 0 && isUnidirectionalOut) {
+            subType = TransactionType.ADD_LIQUIDITY;
+        } else if (remLiqEvents.length > 0 && isUnidirectionalIn) {
+            subType = TransactionType.REMOVE_LIQUIDITY;
+        } else if (swapEvents.length > 0 || isBidirectional) {
+            subType = TransactionType.SWAP;
         }
 
-        // 2. Token Flow (Mandatory Check)
-        // Fix 1: Net User Delta Is Mandatory
-        if (!flow) return null as any;
+        if (!subType) return this.noMatch();
 
-        const netOut = flow.outgoing.filter(a => BigInt(a.amount) > MIN_SWAP_VALUE);
-        const netIn = flow.incoming.filter(a => BigInt(a.amount) > MIN_SWAP_VALUE);
+        const builder = new ConfidenceBuilder();
+        const details: any = {};
 
-        if (netOut.length === 0 || netIn.length === 0) {
-            // Cannot be a user-initiated swap if user didn't give and receive
-            return null as any;
+        if (subType === TransactionType.SWAP) {
+            if (!isBidirectional) return this.noMatch();
+            builder.add(0.40, 'Bidirectional flow confirmed');
+
+            const outAssets = flow!.netOut.map(m => m.asset);
+            const inAssets = flow!.netIn.map(m => m.asset);
+
+            // Penalize wrap/unwrap
+            if (outAssets.length === 1 && inAssets.length === 1 && outAssets[0] === inAssets[0]) {
+                builder.add(-0.40, 'Single asset in/out (likely wrap/unwrap)');
+            }
+
+            let bestEventBoost = 0;
+            let pairInteraction = false;
+            swapEvents.forEach(ev => {
+                const evRecord = ctx.resolveEvent(ev.topics[0]);
+                if (evRecord && evRecord.confidenceBoost > bestEventBoost) {
+                    bestEventBoost = evRecord.confidenceBoost;
+                }
+                if (ev.address.toLowerCase() === ctx.effectiveTo) {
+                    pairInteraction = true;
+                }
+            });
+
+            if (bestEventBoost > 0) builder.add(bestEventBoost, 'Swap event confirmed');
+            if (pairInteraction) builder.add(0.10, 'Swap event emitted by effectiveTo (direct pair interaction)');
+            if (flow!.netIn.length === 1) builder.add(0.15, 'Clean single output');
+
+            if (swapEvents.length >= 2) {
+                // Determine route tokens roughly
+                const allIntermediates = swapEvents.map(e => e.address);
+                details.routeTokens = [...new Set(allIntermediates)];
+            }
+
+            const targetRecord = ctx.resolveTarget();
+            if (targetRecord && targetRecord.category === 'dex') {
+                builder.add(targetRecord.confidenceBoost, 'Target is a known DEX router');
+            }
+
+            const sel = ctx.resolveSelector();
+            if (sel && sel.category === 'dex_swap') {
+                builder.add(sel.confidenceBoost, 'DEX selector identified');
+            }
+
+        } else {
+            // Add/Remove Liquidity logic
+            builder.add(0.40, 'Unidirectional flow confirmed');
+
+            const events = subType === TransactionType.ADD_LIQUIDITY ? addLiqEvents : remLiqEvents;
+            let bestEventBoost = 0;
+            events.forEach(ev => {
+                const evRecord = ctx.resolveEvent(ev.topics[0]);
+                if (evRecord && evRecord.confidenceBoost > bestEventBoost) {
+                    bestEventBoost = evRecord.confidenceBoost;
+                }
+            });
+            if (bestEventBoost > 0) builder.add(bestEventBoost, 'Liquidity event match');
+
+            const targetRecord = ctx.resolveTarget();
+            if (targetRecord && targetRecord.category === 'dex') {
+                builder.add(targetRecord.confidenceBoost, 'Target is a known DEX');
+            }
         }
 
-        // We have bidirectional meaningful flow
-        confidence += 0.4;
-        reasons.push('Bidirectional flow confirmed (Assets Sent & Received)');
-
-        // Fix 2: Asset Difference Enforcement
-        // If Out == In, it's likely a Wrap/Unwrap or Rebase, not a Swap
-        const outAsset = netOut[0].asset;
-        const inAsset = netIn[0].asset;
-        if (netOut.length === 1 && netIn.length === 1 && outAsset === inAsset) {
-            confidence -= 0.4; // Heavy penalty for same-asset "swap"
-            reasons.push('Penalty: Input and Output assets are identical (Likely Wrap/Unwrap)');
-        }
-
-        // Fix 5: Multi-Hop Swap Consolidation
-        // If User sents A, B -> Gets C? Or Sends A -> Gets B, C?
-        // Usually Swap is 1 In, 1 Out (dominant). 
-        if (netIn.length === 1 && netOut.length >= 1) {
-            confidence += 0.15;
-            reasons.push('Clean Swap Pattern (Single dominant output)');
-        }
-
-        // Fix 6: Penalize Internal-Only Swaps (Redundant with Net Delta check, but logic persists)
-        // If we only detected swap because of events, but flow is weird?
-        // Already handled by the "Net Delta Mandatory" check.
-
-        // 3. Address Match
-        let addressMatch = 0.5;
-        if (swapLogs.some(l => l.address.toLowerCase() === ctx.effectiveTo)) {
-            addressMatch = 0.8;
-            confidence += 0.1;
-            reasons.push('Direct interaction with Swap Pair');
-        }
-
-        confidence = Math.min(1.0, Math.max(0.0, confidence));
+        const confidence = builder.getScore();
+        if (confidence < 0.55) return this.noMatch();
 
         return {
-            type: TransactionType.SWAP,
+            functionalType: subType,
             confidence,
-            breakdown: {
-                eventMatch,
-                methodMatch: 0,
-                addressMatch,
-                tokenFlowMatch: 1.0,
-                executionMatch: 1.0
-            },
-            protocol: 'DEX',
-            reasons
+            reasons: builder.getReasons(),
+            details
         };
     }
 }

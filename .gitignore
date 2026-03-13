@@ -63,6 +63,7 @@ pnpm-debug.log*
 lerna-debug.log*
 logs/
 *.log
+apps/api/errors.txt
 
 # --- Application Specific ---
 # API Generated Files
@@ -91,3 +92,4 @@ apps/api/src/scripts/
 packages/database/scripts/
 scripts/
 !apps/api/scripts/postbuild.js
+futureupgrades
